@@ -1,0 +1,41 @@
+# Claude Code / local agent workspace (designer-dev only, not part of the project)
+.claude/
+
+# sqbyl local state: runs, traces, usage, caches (per design spec §4)
+.sqbyl/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# uv / virtualenvs
+.venv/
+venv/
+env/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.coverage
+htmlcov/
+.tox/
+
+# Environment / secrets (never commit ANTHROPIC_API_KEY or DATABASE_URL)
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
