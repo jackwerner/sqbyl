@@ -205,4 +205,4 @@ The authoritative, ordered build sequence is in [`sqbyl-implementation-plan.md`]
 
 ## License
 
-_TODO: choose and add a license (the project is intended to be open source)._
+[MIT](LICENSE) © Jack Werner
