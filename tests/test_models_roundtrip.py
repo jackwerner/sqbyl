@@ -59,6 +59,8 @@ SAMPLES = [
         sample_values=[100, 200, 300],
         profile=Profile(nulls=0.0, min=0, max=4200000),
     ),
+    # The PII opt-out is a modeled shape: `profile: false` must round-trip.
+    Column(name="email", type="text", profile=False),
     Join(
         to="analytics.customers",
         type="many_to_one",

@@ -46,10 +46,15 @@
               "$ref": "#/$defs/Profile"
             },
             {
+              "const": false,
+              "type": "boolean"
+            },
+            {
               "type": "null"
             }
           ],
-          "default": null
+          "default": null,
+          "title": "Profile"
         },
         "sample_values": {
           "anyOf": [
@@ -591,6 +596,19 @@
           },
           "title": "Measures",
           "type": "array"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "const": false,
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profile"
         },
         "synonyms": {
           "items": {

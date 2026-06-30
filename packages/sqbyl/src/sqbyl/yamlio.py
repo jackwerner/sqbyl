@@ -25,6 +25,13 @@ _STRICT_BOOL = re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$")
 
 
 def _install_strict_bool_resolver() -> None:
+    # Give the subclass its *own* resolver table first. Without this, the in-place
+    # edits below mutate PyYAML's shared SafeLoader table, which also leaks into
+    # yaml.safe_dump and makes it tag every bare bool (`x: !!bool 'false'`).
+    if "yaml_implicit_resolvers" not in SqbylYamlLoader.__dict__:
+        SqbylYamlLoader.yaml_implicit_resolvers = {
+            ch: resolvers[:] for ch, resolvers in SqbylYamlLoader.yaml_implicit_resolvers.items()
+        }
     for ch in list(SqbylYamlLoader.yaml_implicit_resolvers):
         resolvers = [
             (tag, regexp)
@@ -44,3 +51,18 @@ def load_yaml(source: str | Path) -> Any:
     """Parse YAML text or a file path with sqbyl's loader."""
     text = source.read_text() if isinstance(source, Path) else source
     return yaml.load(text, Loader=SqbylYamlLoader)
+
+
+def dump_yaml(data: Any) -> str:
+    """Serialize a plain Python structure to YAML, preserving key order.
+
+    Field order is meaningful in sqbyl project files (they are hand-edited), so we
+    never sort keys. Block style keeps drafts readable for review.
+    """
+    return yaml.safe_dump(
+        data,
+        sort_keys=False,
+        default_flow_style=False,
+        allow_unicode=True,
+        width=100,
+    )
