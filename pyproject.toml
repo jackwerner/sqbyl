@@ -1,0 +1,63 @@
+[tool.uv.workspace]
+members = ["packages/*"]
+
+# Virtual workspace root: no [project] table — the root is not itself a
+# distributable package, it only ties the two members together and owns the
+# shared dev tooling. `uv sync` installs both members (editable) plus the dev group.
+
+[dependency-groups]
+dev = [
+    "sqbyl",
+    "sqbyl-runtime",
+    "ruff>=0.6",
+    "pytest>=8",
+    "mypy>=1.11",
+    "import-linter>=2.1",
+    "pyyaml>=6",
+    "types-pyyaml>=6",
+]
+
+[tool.uv.sources]
+sqbyl = { workspace = true }
+sqbyl-runtime = { workspace = true }
+
+# ---------------------------------------------------------------------------
+# Shared tool configuration (applies across both packages)
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["packages/sqbyl/src", "packages/sqbyl-runtime/src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+mypy_path = ["packages/sqbyl/src", "packages/sqbyl-runtime/src"]
+packages = ["sqbyl", "sqbyl_runtime"]
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# Import-linter: enforce the one-way dependency arrow.
+# sqbyl -> sqbyl_runtime is allowed; the reverse must never happen.
+# ---------------------------------------------------------------------------
+
+[tool.importlinter]
+root_packages = ["sqbyl", "sqbyl_runtime"]
+
+[[tool.importlinter.contracts]]
+name = "sqbyl_runtime must not import the dev toolkit"
+type = "forbidden"
+source_modules = ["sqbyl_runtime"]
+forbidden_modules = ["sqbyl"]

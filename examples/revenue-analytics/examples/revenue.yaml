@@ -1,0 +1,25 @@
+- question: What was net revenue last month?
+  sql: |
+    SELECT SUM(amount_cents)/100.0 AS net_revenue
+    FROM analytics.orders
+    WHERE status='confirmed'
+      AND created_at >= date_trunc('month', now()) - interval '1 month'
+      AND created_at <  date_trunc('month', now());
+  tags: [revenue, time-window]
+
+- question: How many orders were refunded?
+  sql: |
+    SELECT COUNT(*) AS refunded_orders
+    FROM analytics.orders
+    WHERE status='refunded';
+  tags: [orders, status]
+
+- question: What is net revenue by region?
+  sql: |
+    SELECT c.region,
+           SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue
+    FROM analytics.orders o
+    JOIN analytics.customers c ON o.customer_id = c.customer_id
+    GROUP BY c.region
+    ORDER BY net_revenue DESC;
+  tags: [revenue, join, group-by]

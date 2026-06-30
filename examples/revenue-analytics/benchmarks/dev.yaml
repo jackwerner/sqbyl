@@ -1,0 +1,43 @@
+# Iteration set: synth-fed; the Coach and Optimizer tune against this.
+- id: q_total_orders
+  question: How many orders are there in total?
+  gold_sql: |
+    SELECT COUNT(*) FROM analytics.orders;
+  eval_note: "A single scalar count."
+  difficulty: easy
+  tags: [orders, count]
+
+- id: q_net_revenue_all
+  question: What is total net revenue?
+  gold_sql: |
+    SELECT SUM(amount_cents)/100.0 AS net_revenue
+    FROM analytics.orders WHERE status='confirmed';
+  eval_note: "Must net out refunds; a single scalar in dollars."
+  difficulty: medium
+  tags: [revenue]
+
+- id: q_refunded_count
+  question: How many orders were refunded?
+  gold_sql: |
+    SELECT COUNT(*) FROM analytics.orders WHERE status='refunded';
+  difficulty: easy
+  tags: [orders, status]
+
+- id: q_revenue_by_region
+  question: What is net revenue broken down by region?
+  gold_sql: |
+    SELECT c.region,
+           SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue
+    FROM analytics.orders o
+    JOIN analytics.customers c ON o.customer_id = c.customer_id
+    GROUP BY c.region ORDER BY net_revenue DESC;
+  eval_note: "Requires the orders↔customers join."
+  difficulty: hard
+  tags: [revenue, join, group-by]
+
+- id: q_customers_by_plan
+  question: How many customers are on each plan?
+  gold_sql: |
+    SELECT plan, COUNT(*) AS n FROM analytics.customers GROUP BY plan ORDER BY n DESC;
+  difficulty: easy
+  tags: [customers, group-by]

@@ -1,0 +1,27 @@
+[project]
+name = "sqbyl"
+version = "0.0.0"
+description = "The full sqbyl dev toolkit: introspect, profile, annotate, synth, eval, Coach, judges, console, optimizer, release builder."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Jack Werner" }]
+dependencies = [
+    "sqbyl-runtime",
+    "pydantic>=2.7,<3",
+    "pyyaml>=6",
+    "duckdb>=1.0",
+]
+
+[project.scripts]
+sqbyl = "sqbyl.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv.sources]
+sqbyl-runtime = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sqbyl"]

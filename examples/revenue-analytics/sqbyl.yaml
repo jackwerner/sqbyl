@@ -1,0 +1,19 @@
+name: revenue-analytics
+description: >
+  Answers revenue, order, and customer questions over the seeded DuckDB fixture.
+  This is sqbyl's dogfood project: the README example and the end-to-end CI smoke test.
+database:
+  dialect: duckdb
+  url: env:DATABASE_URL          # point at fixtures/orders.duckdb
+  read_only: true
+model:
+  provider: anthropic
+  api_key: env:ANTHROPIC_API_KEY
+  default: claude-opus-4-8
+automation:
+  auto_judge: true
+  auto_coach: true
+defaults:
+  max_tables_warn: 7
+  self_repair_attempts: 2
+  prompt_caching: true

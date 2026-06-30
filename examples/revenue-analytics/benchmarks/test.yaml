@@ -1,0 +1,23 @@
+# Held-out set: ideally hand-authored. The Coach and Optimizer NEVER read this —
+# only `eval` and humans do. It is the honest, headline accuracy number.
+- id: t_avg_order_value
+  question: What is the average order amount in dollars?
+  gold_sql: |
+    SELECT AVG(amount_cents)/100.0 AS avg_order_value FROM analytics.orders;
+  eval_note: "Average across all orders, in dollars."
+  difficulty: medium
+  tags: [orders, average]
+
+- id: t_distinct_customers_with_orders
+  question: How many distinct customers have placed at least one order?
+  gold_sql: |
+    SELECT COUNT(DISTINCT customer_id) FROM analytics.orders;
+  difficulty: medium
+  tags: [orders, customers, distinct]
+
+- id: t_partial_refund_revenue
+  question: What is the total amount, in dollars, of partially refunded orders?
+  gold_sql: |
+    SELECT SUM(amount_cents)/100.0 FROM analytics.orders WHERE status='partial_refund';
+  difficulty: medium
+  tags: [orders, status]

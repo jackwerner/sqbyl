@@ -1,0 +1,739 @@
+{
+  "$defs": {
+    "AssetParam": {
+      "additionalProperties": false,
+      "description": "A named parameter of a trusted asset (e.g. ``month (date)``).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "AssetParam",
+      "type": "object"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "description": "A single column's type + meaning + grounding stats.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Profile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sample_values": {
+          "anyOf": [
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Values"
+        },
+        "synonyms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Synonyms",
+          "type": "array"
+        },
+        "type": {
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "Dialect": {
+      "description": "SQL dialects sqbyl can target. DuckDB + Postgres are first-class (M0);\nthe rest land in Phase 9 behind the same dialect seam.",
+      "enum": [
+        "postgresql",
+        "duckdb",
+        "snowflake",
+        "bigquery",
+        "mysql",
+        "sqlite"
+      ],
+      "title": "Dialect",
+      "type": "string"
+    },
+    "Example": {
+      "additionalProperties": false,
+      "description": "An NL question paired with its gold SQL, used as a few-shot example.",
+      "properties": {
+        "question": {
+          "title": "Question",
+          "type": "string"
+        },
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "question",
+        "sql"
+      ],
+      "title": "Example",
+      "type": "object"
+    },
+    "Filter": {
+      "additionalProperties": false,
+      "description": "A named, reusable WHERE fragment (e.g. last_quarter).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sql"
+      ],
+      "title": "Filter",
+      "type": "object"
+    },
+    "Join": {
+      "additionalProperties": false,
+      "description": "A join path to another table. FK-derived joins are high confidence;\nname/type-heuristic candidates are emitted as low-confidence stubs (spec \u00a71.2).",
+      "properties": {
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "on": {
+          "title": "On",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "one_to_one",
+            "one_to_many",
+            "many_to_one",
+            "many_to_many"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "to",
+        "type",
+        "on"
+      ],
+      "title": "Join",
+      "type": "object"
+    },
+    "JudgePrompt": {
+      "additionalProperties": false,
+      "description": "A single named LLM judge (e.g. ``semantic_equivalence``).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "prompt": {
+          "title": "Prompt",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "prompt"
+      ],
+      "title": "JudgePrompt",
+      "type": "object"
+    },
+    "Measure": {
+      "additionalProperties": false,
+      "description": "A named, reusable aggregate expression (e.g. net_revenue).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sql"
+      ],
+      "title": "Measure",
+      "type": "object"
+    },
+    "Profile": {
+      "additionalProperties": false,
+      "description": "Deterministic, $0 column statistics written by the profiler (spec \u00a73.1).\n\nEvery field is optional: the profiler degrades to cheaper stats on large\ntables (sampling), and PII columns may suppress values entirely.",
+      "properties": {
+        "distinct": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Approximate distinct count.",
+          "title": "Distinct"
+        },
+        "max": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max"
+        },
+        "min": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min"
+        },
+        "nulls": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Null fraction (0\u20131).",
+          "title": "Nulls"
+        },
+        "p25": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P25"
+        },
+        "p50": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P50"
+        },
+        "p75": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P75"
+        },
+        "p95": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "P95"
+        },
+        "sampled": {
+          "default": false,
+          "description": "True if computed over a sample (TABLESAMPLE/row cap), not a full scan.",
+          "title": "Sampled",
+          "type": "boolean"
+        }
+      },
+      "title": "Profile",
+      "type": "object"
+    },
+    "Scorecard": {
+      "additionalProperties": false,
+      "description": "The eval result that justified promoting a version (spec \u00a711).\n\nThe headline ``accuracy`` is always the **held-out test** number; ``dev_*`` is\nshown beside it so a reviewer can see the overfitting gap.",
+      "properties": {
+        "accuracy": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Accuracy",
+          "type": "number"
+        },
+        "benchmark": {
+          "description": "Which set produced the headline number, e.g. 'test'.",
+          "title": "Benchmark",
+          "type": "string"
+        },
+        "blessed_with_models": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Blessed With Models",
+          "type": "object"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "dev_accuracy": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dev Accuracy"
+        },
+        "dev_n": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dev N"
+        },
+        "human_reviewed": {
+          "default": false,
+          "title": "Human Reviewed",
+          "type": "boolean"
+        },
+        "judge_human_agreement": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Judge Human Agreement"
+        },
+        "latency_p50_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latency P50 Ms"
+        },
+        "n": {
+          "description": "Number of questions in the headline set.",
+          "minimum": 0,
+          "title": "N",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "benchmark",
+        "accuracy",
+        "n"
+      ],
+      "title": "Scorecard",
+      "type": "object"
+    },
+    "SelectionConfig": {
+      "additionalProperties": false,
+      "description": "How the context compiler narrows tables/examples for a question.",
+      "properties": {
+        "max_tables": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Tables"
+        },
+        "strategy": {
+          "default": "include_all",
+          "enum": [
+            "include_all",
+            "lexical",
+            "llm",
+            "llm_lexical"
+          ],
+          "title": "Strategy",
+          "type": "string"
+        },
+        "value_matching": {
+          "default": false,
+          "title": "Value Matching",
+          "type": "boolean"
+        }
+      },
+      "title": "SelectionConfig",
+      "type": "object"
+    },
+    "TableSemantics": {
+      "additionalProperties": false,
+      "description": "The full semantic description of one table/view (``semantics/<table>.yaml``).",
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "title": "Columns",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "filters": {
+          "items": {
+            "$ref": "#/$defs/Filter"
+          },
+          "title": "Filters",
+          "type": "array"
+        },
+        "joins": {
+          "items": {
+            "$ref": "#/$defs/Join"
+          },
+          "title": "Joins",
+          "type": "array"
+        },
+        "measures": {
+          "items": {
+            "$ref": "#/$defs/Measure"
+          },
+          "title": "Measures",
+          "type": "array"
+        },
+        "synonyms": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Synonyms",
+          "type": "array"
+        },
+        "table": {
+          "title": "Table",
+          "type": "string"
+        }
+      },
+      "required": [
+        "table"
+      ],
+      "title": "TableSemantics",
+      "type": "object"
+    },
+    "TrustedAsset": {
+      "additionalProperties": false,
+      "description": "A vetted, parameterized query the agent should prefer (spec \u00a74 trusted/).",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "params": {
+          "items": {
+            "$ref": "#/$defs/AssetParam"
+          },
+          "title": "Params",
+          "type": "array"
+        },
+        "sql": {
+          "title": "Sql",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "sql"
+      ],
+      "title": "TrustedAsset",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The portable, self-contained agent definition (``<name>.<tag>.json``).",
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "dialect": {
+      "$ref": "#/$defs/Dialect"
+    },
+    "examples": {
+      "items": {
+        "$ref": "#/$defs/Example"
+      },
+      "title": "Examples",
+      "type": "array"
+    },
+    "instructions": {
+      "default": "",
+      "title": "Instructions",
+      "type": "string"
+    },
+    "judges": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JudgePrompt"
+      },
+      "title": "Judges",
+      "type": "object"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_fingerprint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schema Fingerprint"
+    },
+    "schema_version": {
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "scorecard": {
+      "$ref": "#/$defs/Scorecard"
+    },
+    "selection": {
+      "$ref": "#/$defs/SelectionConfig"
+    },
+    "semantics": {
+      "items": {
+        "$ref": "#/$defs/TableSemantics"
+      },
+      "title": "Semantics",
+      "type": "array"
+    },
+    "tag": {
+      "title": "Tag",
+      "type": "string"
+    },
+    "trusted_assets": {
+      "items": {
+        "$ref": "#/$defs/TrustedAsset"
+      },
+      "title": "Trusted Assets",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name",
+    "tag",
+    "created_at",
+    "scorecard",
+    "dialect"
+  ],
+  "title": "sqbyl release artifact",
+  "type": "object"
+}

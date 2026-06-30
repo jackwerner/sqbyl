@@ -1,0 +1,36 @@
+table: analytics.orders
+description: One row per confirmed order. Excludes carts and draft orders.
+synonyms: [purchases, transactions, sales]
+columns:
+  - name: order_id
+    type: bigint
+    description: Primary key.
+    profile: { nulls: 0.0, distinct: 2000, min: 1, max: 2000 }
+  - name: customer_id
+    type: bigint
+    description: FK to analytics.customers.customer_id.
+    profile: { nulls: 0.0, distinct: 200, min: 1, max: 200 }
+  - name: amount_cents
+    type: bigint
+    description: Order total in cents. Divide by 100 for dollars.
+    profile: { nulls: 0.0, min: 127, max: 310229, p50: 5011, p95: 31000 }
+  - name: status
+    type: text
+    description: One of 'confirmed','refunded','partial_refund'.
+    profile: { nulls: 0.0, distinct: 3 }
+    sample_values: [confirmed, partial_refund, refunded]
+  - name: created_at
+    type: timestamp
+    description: Order confirmation time (UTC).
+    profile: { nulls: 0.0, min: "2019-02-02", max: "2026-06-28" }
+joins:
+  - to: analytics.customers
+    type: many_to_one
+    on: "orders.customer_id = customers.customer_id"
+measures:
+  - name: net_revenue
+    description: Revenue net of refunds, in dollars.
+    sql: "SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0"
+filters:
+  - name: last_quarter
+    sql: "created_at >= date_trunc('quarter', now()) - interval '3 months'"

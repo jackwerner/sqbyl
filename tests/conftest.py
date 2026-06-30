@@ -1,0 +1,37 @@
+"""Shared test fixtures: repo paths, the seeded DuckDB, and the dogfood project dir."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DOGFOOD_DIR = REPO_ROOT / "examples" / "revenue-analytics"
+DUCKDB_PATH = REPO_ROOT / "fixtures" / "orders.duckdb"
+
+
+@pytest.fixture(scope="session")
+def repo_root() -> Path:
+    return REPO_ROOT
+
+
+@pytest.fixture(scope="session")
+def dogfood_dir() -> Path:
+    return DOGFOOD_DIR
+
+
+@pytest.fixture(scope="session")
+def duckdb_path() -> Path:
+    """Path to the checked-in seeded DuckDB; rebuild deterministically if absent."""
+    if not DUCKDB_PATH.exists():
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "build_orders_duckdb", REPO_ROOT / "fixtures" / "build_orders_duckdb.py"
+        )
+        assert spec and spec.loader
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.build(DUCKDB_PATH)
+    return DUCKDB_PATH

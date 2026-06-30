@@ -1,0 +1,34 @@
+table: analytics.customers
+description: One row per customer.
+synonyms: [accounts, users]
+columns:
+  - name: customer_id
+    type: bigint
+    description: Primary key.
+    profile: { nulls: 0.0, distinct: 200, min: 1, max: 200 }
+  - name: name
+    type: text
+    description: Customer display name.
+    profile: { nulls: 0.0, distinct: 200 }
+  - name: email
+    type: text
+    description: Contact email.
+    profile: { nulls: 0.0, distinct: 200 }
+  - name: region
+    type: text
+    description: Sales region.
+    profile: { nulls: 0.0, distinct: 4 }
+    sample_values: [us, emea, apac, latam]
+  - name: plan
+    type: text
+    description: Subscription tier.
+    profile: { nulls: 0.0, distinct: 3 }
+    sample_values: [free, pro, enterprise]
+  - name: signup_date
+    type: date
+    description: Date the customer signed up.
+    profile: { nulls: 0.0, min: "2018-06-01", max: "2025-05-31" }
+joins:
+  - to: analytics.orders
+    type: one_to_many
+    on: "customers.customer_id = orders.customer_id"
