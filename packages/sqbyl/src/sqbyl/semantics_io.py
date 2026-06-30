@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sqbyl.annotate import TableAnnotation
 from sqbyl.profile import ProfileOptions
 from sqbyl.yamlio import dump_yaml, load_yaml
 from sqbyl_runtime.models import Profile, TableSemantics
@@ -94,3 +95,29 @@ def merge_profiles(loaded: LoadedSemantics, profiled: TableSemantics) -> dict[st
 def _profile_dict(profile: Profile) -> dict[str, Any]:
     # Drop None fields and the default `sampled: false` for compact, readable blocks.
     return profile.model_dump(exclude_none=True, exclude_defaults=True)
+
+
+def merge_annotation(raw: dict[str, Any], annotation: TableAnnotation) -> dict[str, Any]:
+    """Overlay drafted descriptions/synonyms onto the raw YAML dict.
+
+    Like ``merge_profiles``, this writes into the raw mapping so profile blocks,
+    ``profile: false`` markers, and key order survive — only ``description`` and
+    ``synonyms`` are added/refreshed.
+    """
+    out = dict(raw)
+    out["description"] = annotation.description
+    if annotation.synonyms:
+        out["synonyms"] = list(annotation.synonyms)
+    by_name = {c.name: c for c in annotation.columns}
+    columns = []
+    for col in out.get("columns", []):
+        col = dict(col)
+        name = col.get("name")
+        drafted = by_name.get(name) if isinstance(name, str) else None
+        if drafted is not None:
+            col["description"] = drafted.description
+            if drafted.synonyms:
+                col["synonyms"] = list(drafted.synonyms)
+        columns.append(col)
+    out["columns"] = columns
+    return out

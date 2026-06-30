@@ -1,0 +1,118 @@
+{
+  "entries": {
+    "00c9f55aefb308cda821e813ba1e912833a5a5d48a2bfb8cdcf37e7af6f68145": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 4096,
+        "messages": [
+          {
+            "content": "Table: analytics.orders\n\nColumns (name, type, profile):\n- order_id (bigint)  nulls=0.0, distinct=2000, range=1..2000\n- customer_id (bigint)  nulls=0.0, distinct=200, range=1..200\n- amount_cents (bigint)  nulls=0.0, distinct=1875, range=127..310229\n- status (varchar)  values: confirmed, partial_refund, refunded\n- created_at (timestamp)  nulls=0.0, distinct=2000, range=2019-02-02T14:50:29..2026-06-28T11:02:22\n\nJoins:\n- many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\n\nDraft a table description (what one row is) plus a description and synonyms for every column, each with a confidence. Return them all.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "$defs": {
+            "ColumnAnnotation": {
+              "description": "A drafted description for one column, with the router's confidence signal.",
+              "properties": {
+                "confidence": {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "description": {
+                  "description": "One factual sentence, grounded in the profile.",
+                  "title": "Description",
+                  "type": "string"
+                },
+                "name": {
+                  "title": "Name",
+                  "type": "string"
+                },
+                "synonyms": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Synonyms",
+                  "type": "array"
+                }
+              },
+              "required": [
+                "name",
+                "description",
+                "confidence"
+              ],
+              "title": "ColumnAnnotation",
+              "type": "object"
+            }
+          },
+          "description": "A drafted description for a table and its columns.",
+          "properties": {
+            "columns": {
+              "items": {
+                "$ref": "#/$defs/ColumnAnnotation"
+              },
+              "title": "Columns",
+              "type": "array"
+            },
+            "confidence": {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "title": "Confidence",
+              "type": "number"
+            },
+            "description": {
+              "description": "What one row represents, grounded in the data.",
+              "title": "Description",
+              "type": "string"
+            },
+            "synonyms": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Synonyms",
+              "type": "array"
+            }
+          },
+          "required": [
+            "description",
+            "confidence"
+          ],
+          "title": "TableAnnotation",
+          "type": "object"
+        },
+        "system": "You are a data analyst documenting a SQL table for a text-to-SQL agent. Write concise, factual descriptions grounded in the COLUMN PROFILE STATISTICS provided (ranges, distinct counts, sample values) \u2014 infer units and meaning from the data, never invent facts you can't support. Add a few natural-language synonyms a user might say. Give each description a confidence in [0,1]: high when the data makes the meaning obvious, low when the column is cryptic.",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "claude-opus-4-8",
+        "stop_reason": "tool_use",
+        "structured": {
+          "columns": [
+            {
+              "confidence": 0.95,
+              "description": "Order total in cents.",
+              "name": "amount_cents"
+            }
+          ],
+          "confidence": 0.92,
+          "description": "One row per order placed by a customer.",
+          "synonyms": [
+            "purchases",
+            "sales"
+          ]
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 800,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 900,
+          "output_tokens": 120
+        }
+      }
+    }
+  },
+  "version": 1
+}
