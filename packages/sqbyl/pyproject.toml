@@ -10,7 +10,6 @@ dependencies = [
     "sqbyl-runtime",
     "pydantic>=2.7,<3",
     "pyyaml>=6",
-    "duckdb>=1.0",
 ]
 
 [project.scripts]

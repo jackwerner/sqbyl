@@ -49,7 +49,11 @@ class Column(SqbylModel):
     # Top-k representative values (from the profile); powers lexical value-matching.
     # Suppressed (None) for PII even when the rest of the profile is kept.
     sample_values: list[ScalarBound] | None = None
-    profile: Profile | None = None
+    # ``None`` = not profiled yet; a ``Profile`` = computed stats; ``False`` = the
+    # human opted this column out of profiling entirely (PII), and the profiler must
+    # leave it alone (spec §13). Modeling ``false`` here keeps the opt-out a
+    # pydantic-owned shape rather than a magic literal in the writer code.
+    profile: Profile | Literal[False] | None = None
 
 
 JoinCardinality = Literal["one_to_one", "one_to_many", "many_to_one", "many_to_many"]
@@ -91,3 +95,6 @@ class TableSemantics(SqbylModel):
     joins: list[Join] = Field(default_factory=list)
     measures: list[Measure] = Field(default_factory=list)
     filters: list[Filter] = Field(default_factory=list)
+    # ``False`` opts the whole table out of profiling (PII); ``None`` is the default.
+    # Per-column ``profile: false`` lives on ``Column``.
+    profile: Literal[False] | None = None
