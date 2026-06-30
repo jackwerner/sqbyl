@@ -98,6 +98,29 @@ Out comes one portable JSON, `revenue-analytics.v1.json` — the agent's **brain
 
 ---
 
+## 5.5 Report — the numbers her team will ask for
+
+Before she hands this to GTM, Maya's manager will ask two things: *what will it cost us, and how good is it?* She doesn't reverse-engineer that from logs — sqbyl already metered every call and traced every run, so one command rolls it up:
+
+```bash
+sqbyl report --volume 10000        # at the team's expected ~10k questions/month
+```
+
+```
+sqbyl — revenue-analytics  (dev vs held-out test)
+
+unit economics      $0.012 / query · 1.8k tokens / query · 41% cache savings
+                    projected run-rate  ~$120 / month  @ 10,000 queries
+quality             accuracy   dev 0.97 │ test 0.94   (gap 0.03 — healthy)
+                    manual-review 6%  ·  self-repair 8%  ·  failures 1%
+performance         latency  p50 1.4s │ p95 2.8s
+readiness           96% ▸ shippable   ·  round-trips-to-ship 6   ·  v1 ↑ from v0 (0.86)
+```
+
+It's **aggregates only** — never a row of her customers' data — and `--json` pipes the same numbers straight into the team's dashboard. The headline is the **token unit cost**: $0.012 a question makes "can we afford to point the whole GTM team at this?" a one-line answer instead of a guess. The dev-vs-test split is right there too, so the number she reports up is the honest one.
+
+---
+
 ## 6. Ship — it's just a model with logs
 
 Maya's app already has an API. Adding a revenue endpoint is three lines, embedding the lightweight runtime — no eval/synth/coach machinery comes along for the ride:
@@ -121,4 +144,4 @@ Two weeks later, real usage has surfaced questions her benchmark never had. She 
 
 ---
 
-**The whole shape, in one line:** connect → profile (free) → confirm a costed plan → review a few human-only decisions → coach to target → release a JSON → embed it as a model with logs → feed prod usage back for the next version. Minutes of attention, no surprise bill, and a number she can trust because it came from data the optimizer never saw.
+**The whole shape, in one line:** connect → profile (free) → confirm a costed plan → review a few human-only decisions → coach to target → release a JSON → report the unit economics → embed it as a model with logs → feed prod usage back for the next version. Minutes of attention, no surprise bill, and a number she can trust because it came from data the optimizer never saw.

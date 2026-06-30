@@ -133,6 +133,7 @@ Goal: be able to **measure**. Build the cheap, objective scorers before any LLM 
 ### 3.3 🧱 Run reports + run diffs
 - Per-run aggregates (accuracy/cost/latency/token usage), **reported separately for dev and test**, stamped with **the model version for every role** (a score is never divorced from its model).
 - **Diff vs previous run** — exactly which questions flipped (regression detection). Stored in `.sqbyl/runs/`.
+- The per-run aggregate is a pydantic model and is the **source of the quality KPIs** (accuracy, % manual-review, self-repair rate, dev↔test gap) consumed by the §7.5 reporting surface (Phase 7.3) — shape it with that rollup in mind so the report layer reads runs, not bespoke logs.
 - **Done when:** two runs produce a correct flipped-questions diff; reports persist and reload.
 
 ### 3.4 🧱 Dev/test guardrail
@@ -232,6 +233,12 @@ Goal: second half of **Milestone 2.5** — the cost-gating that makes "no surpri
 - `sqbyl init --auto --budget $N` for headless/CI (**`--budget` required** in `--auto`).
 - Re-running `init`/`eval` on a changed schema **re-orchestrates only what changed** (content-hash diff from Phase 0.5).
 - **Done when:** the full journey-doc flow runs against the fixture under record-replay; `--auto` without `--budget` errors; an unchanged re-run does no paid work.
+
+### 7.3 🧱📦 Operational KPIs + `sqbyl report` (spec §7.5)
+- A **`KpiReport`** pydantic model (invariant 2) that rolls up data **already captured** — `.sqbyl/usage.db` (cost), `.sqbyl/runs/` (quality, from Phase 3.3), OTel traces (latency, p50/p95) — into the four KPI families: **unit economics** (\$/query token unit cost, tokens/query, cache-hit savings %, projected run-rate from `--volume N`), **quality** (held-out accuracy, % manual-review, self-repair rate, dev↔test gap), **performance** (latency p50/p95), **process/readiness** (round-trips-to-ship, readiness score, accuracy/cost trend across releases).
+- A *reporting view only*: spends no tokens, runs no new DB query, emits **aggregates only — never row data** (§13). Human table + `--json` for BI/finance. Cost and quality reported **dev vs held-out test, never conflated**.
+- Lands here because it depends on the metering machinery (7.1) and consumes Phase 3.3 run aggregates; the quality fields fill in as eval matures.
+- **Done when:** `sqbyl report` against the dogfood project (under record-replay, after an eval run) emits a `KpiReport` that validates against its model and reconciles \$/query with `usage.db`; `--json` round-trips; no tokens spent.
 
 > **Milestone 2.5 complete.** The headline experience from the user journey works end to end.
 

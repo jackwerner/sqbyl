@@ -388,6 +388,21 @@ This is the project's unifying pattern: **the LLM proposes, the human reviews, a
 
 ---
 
+## 7.5 Operational KPIs & reporting — the numbers a team reports up
+
+Everything sqbyl already meters and traces — `.sqbyl/usage.db` (every paid call, §9), `.sqbyl/runs/` (eval aggregates, §7), the OTel traces (latency, §3) — is the raw material for the metrics a user's *organization* needs, not just the curator at the keyboard. `sqbyl report` (Python: `proj.kpis()`) rolls those local stores into a **`KpiReport`** — a pydantic model like every other artifact (§4), emitted as a human-readable table **and** machine JSON so it pipes straight into a team's BI/dashboards or a finance spreadsheet. It is a *reporting view over data already captured*, not new collection: no extra tokens, no extra DB reads, and **aggregates only — never row data** (§13). Cost and quality are reported **separately for dev and the held-out test set** (§7), never conflated.
+
+The headline is **token unit cost** — what each answered question actually costs — because that is the number that makes "is this defensible to deploy at scale?" concrete. Four families, each aimed at a different stakeholder:
+
+- **Unit economics (finance).** Token unit cost: **\$/query** and **tokens/query**; cost per release build; **cache-hit savings %** (prompt-cache reads vs. cold); and a **projected run-rate** (\$/month at a stated query volume) so a team can budget a deployment before shipping it.
+- **Quality (the curator / data team).** Held-out **accuracy**, **% needing manual review**, **self-repair rate** (answers that needed a retry — a leading indicator of brittle context), **failure/refusal rate**, and the **dev↔test gap** (the overfitting signal, §7) surfaced as a first-class KPI rather than a footnote.
+- **Performance (engineering / SRE).** Per-query **latency p50/p95** and throughput, read straight from the OTel spans (§3) — the same data any OTel backend would chart, so this never locks observability in.
+- **Process & readiness (product / leadership).** **Round-trips-to-ship** (the §1.5 product metric — minimizing messages/clicks is tracked "like accuracy"), the **readiness score** (§5.5 distance-to-shippable), and the **accuracy/cost trend across releases** (the optimizer frontier, §6.C) so improvement over time is legible, not anecdotal.
+
+This is the same posture as the spend meter (§9): make the economics and quality of the agent *legible and exportable* rather than asking a team to reverse-engineer them from logs. It is downstream of the eval harness (quality KPIs need §7 runs) and the cost machinery (§9), so it fills in as those land — see the implementation plan.
+
+---
+
 ## 8. The Coach — LLM-assisted iteration (headline feature)
 
 The thing the user specifically wants: *Databricks recommends instructions and prompt tweaks; the open-source version should do the same, using the same Claude model and key.*
@@ -481,6 +496,8 @@ sqbyl optimize --budget $5 --target 0.9   # autonomous loop on dev; reports held
 sqbyl cost <command> | <cmd> --dry-run    # estimate $ / tokens for any paid command, spend nothing
 sqbyl ask "..."                  # one-shot NL→SQL→result (interactive REPL: sqbyl chat)
 sqbyl runs                       # list runs; sqbyl runs diff <a> <b>
+sqbyl report [--json] [--volume N]   # roll up usage/runs/traces → KpiReport (§7.5)
+                                 #   token unit cost, accuracy, latency, readiness — dev vs test
 
 # ── ship & serve ──
 sqbyl run <release.json>         # serve a release: inject DB + key; exposes ask()/REST/MCP
@@ -496,6 +513,7 @@ ans = proj.ask("net revenue last month")
 print(ans.sql, ans.rows)
 
 report = proj.eval("dev")                    # → ScoredRun (held-out: proj.eval("test"))
+kpis = proj.kpis(volume=10_000)              # → KpiReport: $/query, accuracy, p95, readiness (§7.5)
 proposals = proj.coach(report)               # → list[Proposal]
 proj.apply(proposals[:3])                    # writes diffs to project files
 proj.eval("dev")                             # re-measure
