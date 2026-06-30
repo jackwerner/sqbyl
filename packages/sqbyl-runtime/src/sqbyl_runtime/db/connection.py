@@ -22,9 +22,10 @@ from types import TracebackType
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 
 from sqbyl_runtime.db.dialects import DialectAdapter, PrivilegeReport, adapter_for
-from sqbyl_runtime.db.errors import WritablePrivilegeWarning
+from sqbyl_runtime.db.errors import StaticValidationError, WritablePrivilegeWarning
 from sqbyl_runtime.db.guard import assert_read_only
 from sqbyl_runtime.models import Dialect
 
@@ -53,7 +54,9 @@ def resolve_url(raw: str, dialect: Dialect) -> str:
         if not value:
             raise ValueError(f"database url references env:{name}, but ${name} is unset or empty")
         url = value.strip()
-    if "://" not in url and dialect is Dialect.duckdb:
+    # `==` not `is`: Dialect is a StrEnum, so this stays correct even if a caller
+    # hands in the bare string "duckdb" rather than the enum member.
+    if "://" not in url and dialect == Dialect.duckdb:
         url = f"duckdb:///{url}"
     return url
 
@@ -126,6 +129,23 @@ class Database:
             columns = list(result.keys())
             rows = [tuple(row) for row in result.fetchall()]
         return QueryResult(columns=columns, rows=rows)
+
+    def explain(self, sql: str) -> None:
+        """Static-validate read-only SQL via ``EXPLAIN`` — no execution (spec §5 step 4).
+
+        Binds the statement against the live schema to catch nonexistent columns,
+        type errors, and dialect issues without running it. Raises
+        ``StaticValidationError`` on failure so the pipeline can self-repair. The
+        wrapped statement is asserted read-only first, so this never plans a write.
+        """
+        if self.read_only:
+            assert_read_only(sql, dialect=self.dialect)
+        try:
+            with self._engine.connect() as conn:
+                conn.execute(text(f"EXPLAIN {sql}"))
+        except SQLAlchemyError as exc:
+            # Prefer the driver's own message (DBAPIError.orig) when present.
+            raise StaticValidationError(str(getattr(exc, "orig", None) or exc)) from exc
 
     def close(self) -> None:
         self._engine.dispose()

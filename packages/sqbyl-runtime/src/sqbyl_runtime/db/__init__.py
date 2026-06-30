@@ -16,6 +16,7 @@ from sqbyl_runtime.db.dialects import (
     adapter_for,
 )
 from sqbyl_runtime.db.errors import (
+    StaticValidationError,
     UnparseableSqlError,
     WritablePrivilegeWarning,
     WriteAttemptError,
@@ -29,6 +30,7 @@ __all__ = [
     "PostgresAdapter",
     "PrivilegeReport",
     "QueryResult",
+    "StaticValidationError",
     "UnparseableSqlError",
     "WritablePrivilegeWarning",
     "WriteAttemptError",

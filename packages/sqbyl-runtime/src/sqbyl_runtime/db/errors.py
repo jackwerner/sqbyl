@@ -19,6 +19,14 @@ class UnparseableSqlError(Exception):
     """
 
 
+class StaticValidationError(Exception):
+    """Raised when ``EXPLAIN`` rejects generated SQL (bad column, type, dialect issue).
+
+    The agent pipeline catches this and feeds the message back to the model for
+    self-repair (spec §5 step 4) — it never executes SQL that failed static validation.
+    """
+
+
 class WritablePrivilegeWarning(UserWarning):
     """Emitted on connect when the credential can write but read-only is requested.
 
