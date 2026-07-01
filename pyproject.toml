@@ -15,6 +15,8 @@ dev = [
     "import-linter>=2.1",
     "pyyaml>=6",
     "types-pyyaml>=6",
+    # Drives the review console's Starlette TestClient in tests (no live server needed).
+    "httpx>=0.27",
 ]
 
 [tool.uv.sources]
@@ -36,6 +38,11 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+filterwarnings = [
+    # Starlette's TestClient warns that its httpx backend is deprecated; not our concern.
+    # No category given (the warning is a Starlette-specific class), so match by message.
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
 
 [tool.mypy]
 python_version = "3.11"
@@ -62,16 +69,24 @@ type = "forbidden"
 source_modules = ["sqbyl_runtime"]
 forbidden_modules = ["sqbyl"]
 
-# Dev/test boundary (invariant 3, plan 3.4). Today the held-out set is guarded by code
-# shape (test.yaml is loadable only via `sqbyl.eval.heldout`; `benchmarks_io`'s only
-# public reader is the dev-hard-wired `load_dev_set` — the generic reader is private
-# `_read_set`) plus a guardrail test. A `forbidden` import-linter contract can't be added
-# cleanly yet: everything routes through the `sqbyl.project` substrate hub (which lazily
-# imports the eval runner, which legitimately imports `heldout`), so a transitive-catching
-# contract would false-positive.
+# Dev/test boundary (invariant 3, plan 3.4). The held-out `test.yaml` is reachable only
+# via `sqbyl.eval.heldout`, so the loop that *optimizes on dev* (synth now; coach/optimize
+# in later phases) must never import that module — otherwise it could read the very set
+# whose score justifies a release, which is training on the test set.
 #
-# TODO (Phases 4–8): when `sqbyl.coach`, `sqbyl.synth`, and `sqbyl.optimize` land as their
-# own modules, add a `forbidden` contract with those as source_modules and
-# `sqbyl.eval.heldout` forbidden — those modules won't route through the Project hub the
-# way `eval` does, so the held-out set becomes structurally unreachable by the loop that
-# optimizes on dev. (Can't be added now — import-linter errors on nonexistent modules.)
+# The `sqbyl.project` substrate hub lazily imports the eval runner inside `Project.eval`
+# (the runner legitimately imports `heldout` — `eval` is the one allowed reader), so
+# *everything* routes to `heldout` through that hub. We ignore only that single incidental
+# hub edge (`project -> eval.runner`); every other path is real. So a synth/console module
+# that imports `heldout` or the `runner` **directly** is still caught — the contract fails
+# closed on an actual violation while permitting the sanctioned eval door.
+[[tool.importlinter.contracts]]
+name = "the dev-loop (synth/console) cannot read the held-out test set"
+type = "forbidden"
+source_modules = ["sqbyl.synth", "sqbyl.console"]
+forbidden_modules = ["sqbyl.eval.heldout"]
+ignore_imports = ["sqbyl.project -> sqbyl.eval.runner"]
+
+# TODO (Phases 6/8): add `sqbyl.coach` and `sqbyl.optimize` to `source_modules` above when
+# those modules land — same rule, same reasoning. (Can't list them now: import-linter
+# errors on nonexistent modules.)

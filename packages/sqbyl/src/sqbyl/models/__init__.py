@@ -6,6 +6,15 @@ Release-embedded models live in ``sqbyl_runtime.models``; these depend on them.
 from __future__ import annotations
 
 from sqbyl.models.benchmarks import BenchmarkQuestion
+from sqbyl.models.candidates import (
+    EVIDENCE_ROW_CAP,
+    Candidate,
+    CandidateStatus,
+    DroppedCandidate,
+    DropReason,
+    ExecutionEvidence,
+    SynthResult,
+)
 from sqbyl.models.manifest import (
     MODEL_ROLES,
     AutomationConfig,
@@ -28,6 +37,7 @@ from sqbyl.models.runs import (
 )
 
 __all__ = [
+    "EVIDENCE_ROW_CAP",
     "MODEL_ROLES",
     "SCORER_ASSET_ROUTING",
     "SCORER_RESULT_CORRECTNESS",
@@ -35,8 +45,13 @@ __all__ = [
     "SCORER_SYNTAX_VALIDITY",
     "AutomationConfig",
     "BenchmarkQuestion",
+    "Candidate",
+    "CandidateStatus",
     "DatabaseConfig",
     "DefaultsConfig",
+    "DropReason",
+    "DroppedCandidate",
+    "ExecutionEvidence",
     "ModelConfig",
     "OverfittingSignal",
     "QuestionResult",
@@ -44,5 +59,6 @@ __all__ = [
     "ScoredRun",
     "ScorerResult",
     "SqbylManifest",
+    "SynthResult",
     "Verdict",
 ]

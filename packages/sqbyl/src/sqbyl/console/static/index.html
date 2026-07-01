@@ -1,0 +1,197 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>sqbyl review</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root { color-scheme: light dark; --line: #8883; --ok: #2e7d32; --bad: #c62828; --dim: #8886; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 1.5rem;
+         max-width: 860px; margin-inline: auto; }
+  header { display: flex; align-items: baseline; gap: .75rem; border-bottom: 1px solid var(--line);
+           padding-bottom: .75rem; margin-bottom: 1rem; }
+  h1 { font-size: 1.1rem; margin: 0; }
+  .counts { color: var(--dim); font-size: .85rem; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; }
+  .q { font-size: 1.15rem; font-weight: 600; margin: 0 0 .35rem; }
+  .meta { color: var(--dim); font-size: .8rem; margin-bottom: .75rem; }
+  .badge { display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+           padding: 0 .5rem; margin-right: .35rem; }
+  pre, textarea { font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre { background: #8881; border-radius: 8px; padding: .7rem .8rem; overflow-x: auto; margin: 0; }
+  textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: .6rem; }
+  label { display: block; font-size: .8rem; color: var(--dim); margin: .6rem 0 .2rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: .3rem; }
+  th, td { border: 1px solid var(--line); padding: .3rem .5rem; text-align: left; white-space: nowrap; }
+  th { background: #8881; }
+  .rowcount { color: var(--dim); font-size: .78rem; margin-top: .3rem; }
+  .keys { margin-top: 1rem; color: var(--dim); font-size: .82rem; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px;
+        padding: 0 .35rem; font-family: inherit; }
+  button { font: inherit; padding: .3rem .7rem; border: 1px solid var(--line);
+           border-radius: 7px; background: #8881; cursor: pointer; }
+  .toast { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+           background: #000c; color: #fff; padding: .4rem .9rem; border-radius: 8px;
+           font-size: .85rem; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .empty { text-align: center; color: var(--dim); padding: 3rem 0; }
+  .rerun-msg.bad { color: var(--bad); }
+  .rerun-msg.ok { color: var(--ok); }
+</style>
+
+<header>
+  <h1>sqbyl review</h1>
+  <span class="counts" id="counts"></span>
+</header>
+
+<main id="main"></main>
+
+<div class="keys" id="keys">
+  <kbd>a</kbd> accept · <kbd>e</kbd> edit · <kbd>r</kbd> reject · <kbd>A</kbd> accept all ·
+  in edit: <kbd>⌘/Ctrl+Enter</kbd> re-run
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let queue = [];       // pending candidates
+let idx = 0;
+let editing = false;
+
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1400);
+}
+
+async function load() {
+  const data = await (await fetch("/api/candidates")).json();
+  const c = data.counts;
+  $("#counts").textContent = `${c.pending} pending · ${c.accepted} accepted · ${c.rejected} rejected`;
+  queue = data.candidates.filter((x) => x.status === "pending");
+  if (idx >= queue.length) idx = Math.max(0, queue.length - 1);
+  render();
+}
+
+function evidenceTable(ev) {
+  if (!ev || !ev.columns.length) return "";
+  const head = ev.columns.map((c) => `<th>${esc(c)}</th>`).join("");
+  const body = ev.rows.map((r) => "<tr>" + r.map((v) => `<td>${esc(fmt(v))}</td>`).join("") + "</tr>").join("");
+  const more = ev.row_count > ev.rows.length ? ` (showing ${ev.rows.length} of ${ev.row_count})` : "";
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>
+          <div class="rowcount">${ev.row_count} row(s)${more}</div>`;
+}
+
+function render() {
+  const main = $("#main");
+  if (!queue.length) {
+    main.innerHTML = `<div class="empty">No pending candidates. 🎉<br>Run <code>sqbyl synth</code> to propose more.</div>`;
+    return;
+  }
+  const c = queue[idx];
+  const badges = [
+    c.difficulty ? `<span class="badge">${esc(c.difficulty)}</span>` : "",
+    c.canonical ? "" : `<span class="badge">variant of ${esc(c.variant_of || "?")}</span>`,
+    c.seed ? `<span class="badge">${esc(c.seed)}</span>` : "",
+  ].join("");
+  if (!editing) {
+    main.innerHTML = `
+      <div class="card">
+        <p class="q">${esc(c.question)}</p>
+        <div class="meta">${idx + 1} / ${queue.length} · <code>${esc(c.id)}</code> ${badges}</div>
+        <pre>${esc(c.gold_sql)}</pre>
+        ${evidenceTable(c.evidence)}
+      </div>`;
+  } else {
+    main.innerHTML = `
+      <div class="card">
+        <label>question</label>
+        <textarea id="edit-q" rows="2">${esc(c.question)}</textarea>
+        <label>gold SQL</label>
+        <textarea id="edit-sql" rows="6">${esc(c.gold_sql)}</textarea>
+        <div style="margin-top:.6rem; display:flex; gap:.5rem; align-items:center">
+          <button id="btn-rerun">re-run (⌘/Ctrl+Enter)</button>
+          <button id="btn-accept">accept edited</button>
+          <button id="btn-cancel">cancel</button>
+          <span class="rerun-msg" id="rerun-msg"></span>
+        </div>
+        <div id="rerun-out">${evidenceTable(c.evidence)}</div>
+      </div>`;
+    $("#btn-rerun").onclick = rerun;
+    $("#btn-accept").onclick = () => accept(true);
+    $("#btn-cancel").onclick = () => { editing = false; render(); };
+    $("#edit-sql").focus();
+  }
+}
+
+async function rerun() {
+  const gold_sql = $("#edit-sql").value;
+  const res = await post(`/api/candidates/${queue[idx].id}/rerun`, { gold_sql });
+  const msg = $("#rerun-msg");
+  if (res.ok) {
+    msg.className = "rerun-msg ok"; msg.textContent = "✓ runs";
+    $("#rerun-out").innerHTML = evidenceTable(res.evidence);
+  } else {
+    msg.className = "rerun-msg bad"; msg.textContent = `✗ ${res.reason}: ${res.detail || ""}`;
+  }
+}
+
+async function accept(edited) {
+  const c = queue[idx];
+  const body = edited
+    ? { question: $("#edit-q").value, gold_sql: $("#edit-sql").value }
+    : {};
+  const res = await post(`/api/candidates/${c.id}/accept`, body);
+  if (res.ok === false) {
+    // Re-grounding refused it: the gold SQL no longer runs. Stay on the card so the
+    // reviewer can fix it (press `e`) rather than silently admitting a broken answer.
+    toast(`✗ not accepted — gold SQL ${res.reason}`);
+    return;
+  }
+  toast(res.added_to_dev ? `accepted → benchmarks/dev.yaml` : "already in dev.yaml");
+  editing = false;
+  await load();
+}
+
+async function reject() {
+  await post(`/api/candidates/${queue[idx].id}/reject`, {});
+  toast("rejected");
+  await load();
+}
+
+async function acceptAll() {
+  const pending = [...queue];
+  let ok = 0, refused = 0;
+  for (const c of pending) {
+    const res = await post(`/api/candidates/${c.id}/accept`, {});
+    res.ok === false ? refused++ : ok++;
+  }
+  toast(refused ? `accepted ${ok}, ${refused} no longer run` : `accepted ${ok} candidate(s)`);
+  await load();
+}
+
+async function post(url, body) {
+  return (await fetch(url, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+  })).json();
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v) => v === null ? "∅" : v;
+
+document.addEventListener("keydown", (e) => {
+  const inField = ["TEXTAREA", "INPUT"].includes(e.target.tagName);
+  if (editing) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); rerun(); }
+    if (e.key === "Escape") { editing = false; render(); }
+    return;
+  }
+  if (inField || !queue.length) return;
+  if (e.key === "a") { e.preventDefault(); accept(false); }
+  else if (e.key === "A") { e.preventDefault(); acceptAll(); }
+  else if (e.key === "e") { e.preventDefault(); editing = true; render(); }
+  else if (e.key === "r") { e.preventDefault(); reject(); }
+});
+
+load();
+</script>
