@@ -19,6 +19,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
+from sqbyl.models.judges import JudgeVerdict
 from sqbyl_runtime.llm.base import Usage
 from sqbyl_runtime.models import SqbylModel
 
@@ -31,16 +32,23 @@ SCORER_RESULT_CORRECTNESS = "result_correctness"
 
 
 class Verdict(StrEnum):
-    """The Layer-1 outcome for one question.
+    """The outcome of record for one question — always the *deterministic* Layer-1 call.
 
-    Deliberately three values, not four: a result-set *mismatch* is **not** proof of
-    incorrectness — different SQL can be semantically equivalent — so Layer 1 never
-    asserts "incorrect". A mismatch (or a question with no executable gold) is routed
-    to ``manual_review``, which Layer-2 judges / a human later resolve (spec §7).
+    Layer 1 emits only three of these: a result-set *mismatch* is **not** proof of
+    incorrectness — different SQL can be semantically equivalent — so Layer 1 never asserts
+    ``incorrect``. A mismatch (or a question with no executable gold) is routed to
+    ``manual_review`` and stays there in the headline until a **human** resolves it.
+
+    The Layer-2 judge never sets this field: it is *advisory* (it triages the review pile
+    and explains why, via :attr:`QuestionResult.judge_suggestion`) and must not move the
+    reported accuracy, which is the deterministic truth users report upstream. ``incorrect``
+    is therefore never emitted by scoring; it exists only as a judge *suggestion* value and,
+    later, a human-confirmed verdict (Phase 5.2).
     """
 
-    correct = "correct"  # generated result set matched the gold
-    manual_review = "manual_review"  # mismatch, or no gold to compare against
+    correct = "correct"  # deterministic: generated result set matched the gold
+    incorrect = "incorrect"  # never set by scoring — a judge suggestion / human verdict only
+    manual_review = "manual_review"  # mismatch or no gold — awaits a human
     error = "error"  # the agent produced no executable SQL
 
 
@@ -57,29 +65,46 @@ class QuestionResult(SqbylModel):
 
     id: str
     question: str
-    verdict: Verdict
+    verdict: Verdict  # the Layer-1 verdict; preserved even after Layer 2 runs
     generated_sql: str
     plan: str = ""
     gold_sql: str | None = None
     gold_asset: str | None = None
     scorers: list[ScorerResult] = Field(default_factory=list)
+    # Layer 2 (spec §7) is ADVISORY: the judge panel's per-dimension verdicts (each with a
+    # rationale that explains *why the row needs review*) and the arbiter's suggested
+    # disposition. ``judge_suggestion`` is a hint to speed a human's review — it never feeds
+    # the headline accuracy (that stays deterministic). ``None`` means the panel didn't run
+    # (the row was already resolved by Layer 1, or judging was off).
+    judge_verdicts: list[JudgeVerdict] = Field(default_factory=list)
+    judge_suggestion: Verdict | None = None
     used_assets: list[str] = Field(default_factory=list)
     selected_tables: list[str] = Field(default_factory=list)
     attempts: int = 0
     repaired: bool = False
     error: str | None = None
-    usage: Usage = Field(default_factory=Usage)
-    cost_usd: float = 0.0
+    usage: Usage = Field(default_factory=Usage)  # agent tokens only
+    cost_usd: float = 0.0  # agent cost only
+    # Layer-2 spend is kept separate so per-role accounting (invariant 5, §7.5) never
+    # mis-attributes judge tokens to the agent role/model.
+    judge_usage: Usage = Field(default_factory=Usage)
+    judge_cost_usd: float = 0.0
     latency_ms: float = 0.0
     trace_id: str = ""
 
     @property
     def correct(self) -> bool:
+        """Deterministically correct — the only thing that counts toward accuracy."""
         return self.verdict is Verdict.correct
 
     @property
     def needs_review(self) -> bool:
         return self.verdict is Verdict.manual_review
+
+    @property
+    def judged(self) -> bool:
+        """True once the advisory judge panel has triaged this row (it made a suggestion)."""
+        return self.judge_suggestion is not None
 
     def scorer(self, name: str) -> ScorerResult | None:
         """The recorded result for a named scorer, if it ran."""
@@ -123,6 +148,14 @@ class ScoredRun(SqbylModel):
     def n_error(self) -> int:
         return sum(1 for r in self.results if r.verdict is Verdict.error)
 
+    def n_suggested(self, suggestion: Verdict) -> int:
+        """How many review-pile rows the advisory judge triaged with a given suggestion.
+
+        A reporting aid only — these counts describe the ``manual_review`` queue (how much
+        the judge thinks is likely-equivalent vs likely-wrong vs genuinely ambiguous), and
+        never enter :attr:`accuracy`."""
+        return sum(1 for r in self.results if r.judge_suggestion is suggestion)
+
     @property
     def accuracy(self) -> float:
         """Headline accuracy: fraction scored ``correct`` by the deterministic layer."""
@@ -162,9 +195,10 @@ class ScoredRun(SqbylModel):
 
     @property
     def total_usage(self) -> Usage:
+        """All tokens spent this run — agent generation *and* Layer-2 judging."""
         total = Usage()
         for r in self.results:
-            total = total + r.usage
+            total = total + r.usage + r.judge_usage
         return total
 
     @property
@@ -173,7 +207,7 @@ class ScoredRun(SqbylModel):
 
     @property
     def total_cost_usd(self) -> float:
-        return sum(r.cost_usd for r in self.results)
+        return sum(r.cost_usd + r.judge_cost_usd for r in self.results)
 
     def correct_ids(self) -> set[str]:
         return {r.id for r in self.results if r.verdict is Verdict.correct}

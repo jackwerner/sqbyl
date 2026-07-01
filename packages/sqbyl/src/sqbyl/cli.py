@@ -191,6 +191,7 @@ def _eval(args: list[str]) -> int:
     from sqbyl.eval.benchmarks_io import Split
     from sqbyl.eval.heldout import load_for_eval
     from sqbyl.eval.report import diff_runs, load_runs, previous_run
+    from sqbyl.models import Verdict
     from sqbyl.project import Project
     from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.state.layout import SqbylPaths
@@ -233,27 +234,57 @@ def _eval(args: list[str]) -> int:
     est = estimate_cost(
         model=model, calls=len(questions), avg_input_tokens=1500, avg_output_tokens=300
     )
+    judging = project.manifest.automation.auto_judge
+    judge_note = (
+        " (agent only; judging adds up to 3 calls per review-pile row, metered live)"
+        if judging
+        else ""
+    )
     print(
         f"▸ eval {split.value} — {len(questions)} question(s) on {model}, "
-        f"estimated ~${est:.4f} (paid)"
+        f"estimated ~${est:.4f} (paid){judge_note}"
     )
 
     run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
 
+    # Headline accuracy is DETERMINISTIC only — the truth users report upstream. The judge
+    # is advisory and never moves this number (see spec §7 / the review pile below).
     lo, hi = run.accuracy_ci()
     print(
-        f"\naccuracy: {run.n_correct}/{run.total} ({run.accuracy:.1%}"
+        f"\naccuracy (deterministic): {run.n_correct}/{run.total} ({run.accuracy:.1%}"
         f", 95% CI {lo:.0%}–{hi:.0%})"
-        f" · manual review: {run.n_manual_review} · errors: {run.n_error}"
+        f" · needs review: {run.n_manual_review} · errors: {run.n_error}"
     )
+    if run.n_manual_review:
+        # Advisory triage: how the judge thinks the review pile splits (never scored).
+        likely_ok = run.n_suggested(Verdict.correct)
+        likely_wrong = run.n_suggested(Verdict.incorrect)
+        ambiguous = run.n_suggested(Verdict.manual_review)
+        print(
+            f"  review pile — judge suggests: {likely_ok} likely-equivalent, "
+            f"{likely_wrong} likely-wrong, {ambiguous} ambiguous (all await a human)"
+        )
     print(
         f"self-repair: {run.self_repair_rate:.1%} · mean latency: {run.mean_latency_ms:.0f}ms"
         f" · {run.total_tokens} tokens · ${run.total_cost_usd:.4f}"
     )
     print("models: " + ", ".join(f"{role}={m}" for role, m in sorted(run.models.items())))
+    if run.models.get("judge") and run.models.get("judge") == run.models.get("agent"):
+        print(
+            "  ⚠ judge model == agent model — suggestions share the agent's blind spots; "
+            "pin a different judge model in sqbyl.yaml for independence."
+        )
+    marks = {"correct": "✓", "manual_review": "?", "error": "✗"}
+    hint = {
+        "correct": "likely-equivalent",
+        "incorrect": "likely-wrong",
+        "manual_review": "ambiguous",
+    }
     for r in run.results:
-        mark = {"correct": "✓", "manual_review": "?", "error": "✗"}[r.verdict.value]
-        print(f"  {mark} {r.id}  [{r.verdict.value}]")
+        v = r.verdict.value
+        # For a review-pile row, show the advisory judge hint (not a score).
+        suggestion = f"  → judge: {hint[r.judge_suggestion.value]}" if r.judge_suggestion else ""
+        print(f"  {marks[v]} {r.id}  [{v}]{suggestion}")
 
     prev = previous_run(paths, run)
     if prev is not None:

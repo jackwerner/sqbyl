@@ -58,7 +58,8 @@ def test_eval_cli_scores_meters_and_persists(
     assert code == 0
     out = capsys.readouterr().out
     assert "estimated ~$" in out  # up-front estimate (invariant 5)
-    assert f"accuracy: {n}/{n} (100.0%" in out  # followed by the 95% CI
+    # Headline is the deterministic accuracy (the judge is advisory, never scores it).
+    assert f"accuracy (deterministic): {n}/{n} (100.0%" in out  # followed by the 95% CI
     assert "95% CI" in out
 
     # Every ask() was metered under the eval command.
@@ -107,7 +108,7 @@ def test_eval_cli_defaults_to_dev_and_accepts_test(
     code = main(["eval", "test", str(project)])
     assert code == 0
     out = capsys.readouterr().out
-    assert f"accuracy: {len(test_qs)}/{len(test_qs)}" in out
+    assert f"accuracy (deterministic): {len(test_qs)}/{len(test_qs)}" in out
     assert "held-out test scored" not in out  # first scoring: no peek warning yet
     assert len(load_runs(SqbylPaths(project), split="test")) == 1
 

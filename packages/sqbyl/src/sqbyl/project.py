@@ -90,6 +90,19 @@ class Project:
                         run_id=run.run_id,
                     )
                 )
+                # Layer-2 judging is metered as its own role so cost is attributed to the
+                # judge model, not folded into the agent's (invariant 5, §7.5).
+                if result.judge_usage.total_tokens:
+                    store.record(
+                        UsageRecord.from_usage(
+                            result.judge_usage,
+                            model=run.models.get("judge"),
+                            command="eval",
+                            role="judge",
+                            cost_usd=result.judge_cost_usd,
+                            run_id=run.run_id,
+                        )
+                    )
         if persist:
             save_run(paths, run)
         return run
