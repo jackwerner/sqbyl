@@ -269,6 +269,111 @@ def _eval(args: list[str]) -> int:
     return 0
 
 
+def _synth(args: list[str]) -> int:
+    """`sqbyl synth [DIR] [--n N] [--budget $N] [--replay P] [--record P] [--as-of ISO]`.
+
+    Execution-grounded candidate generation (spec §6.A): one paid drafting call proposes
+    ~N questions with gold SQL, then every gold query is **executed** and only the ones
+    that actually run and return a real answer survive. Survivors land in the review queue
+    (``.sqbyl/candidates.yaml``) for ``sqbyl review`` — never in the held-out ``test.yaml``.
+    """
+    from datetime import datetime
+
+    from sqbyl.candidates_io import add_candidates, candidates_path
+    from sqbyl.llm import build_llm_client
+    from sqbyl.models import DropReason
+    from sqbyl.project import Project
+    from sqbyl.synth import synthesize
+    from sqbyl_runtime.cost import estimate_cost
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
+
+    replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
+    n_opt, budget_opt, as_of_opt = _opt(args, "n"), _opt(args, "budget"), _opt(args, "as-of")
+    consumed = {replay, record, model_opt, n_opt, budget_opt, as_of_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    model = model_opt or project.manifest.model.for_role("synth")
+    n = int(n_opt) if n_opt else 20
+    budget = float(budget_opt) if budget_opt is not None else None
+    try:
+        as_of = datetime.fromisoformat(as_of_opt) if as_of_opt else None
+    except ValueError:
+        print(f"invalid --as-of {as_of_opt!r}; expected an ISO datetime like 2026-06-30")
+        return 2
+
+    # One drafting call producing a batch — estimate a large output for ~n questions.
+    est = estimate_cost(model=model, calls=1, avg_input_tokens=2000, avg_output_tokens=2000)
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    print(f"▸ synth ~{n} candidate(s) on {model} — estimated ~${est:.4f} (paid){cap}")
+    if budget is not None and est > budget:
+        print(
+            f"  ✗ estimate ~${est:.4f} exceeds budget ${budget:.2f} — raise --budget or lower --n"
+        )
+        return 1
+
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    paths = SqbylPaths(project.root).ensure()
+    result = synthesize(
+        project,
+        llm=llm,
+        model=model,
+        n=n,
+        as_of=as_of,
+        trace_writer=TraceWriter(paths.traces_dir / "synth.jsonl"),
+    )
+    spent = _meter(
+        project, result.usage, model=model, command="synth", role="synth", run_id=new_trace_id()
+    )
+    add_candidates(project, result.survivors)
+
+    print(
+        f"\ndrafted {result.n_drafted} · kept {result.n_survivors} · "
+        f"dropped {result.n_dropped} (execution-grounded) · ${spent:.4f}"
+    )
+    if result.dropped:
+        by_reason: dict[str, int] = {}
+        for d in result.dropped:
+            by_reason[d.reason.value] = by_reason.get(d.reason.value, 0) + 1
+        order = [r.value for r in DropReason]
+        pretty = ", ".join(f"{k}={by_reason[k]}" for k in order if k in by_reason)
+        print(f"  drops: {pretty}")
+    if result.survivors:
+        # Surface the survivor difficulty mix: execution-grounding drops empty results, so
+        # the kept set skews toward satisfiable (often easier) questions — make that visible
+        # rather than letting a lopsided dev set quietly imply broad coverage (spec §7).
+        by_difficulty: dict[str, int] = {}
+        for c in result.survivors:
+            by_difficulty[c.difficulty or "—"] = by_difficulty.get(c.difficulty or "—", 0) + 1
+        mix = ", ".join(f"{k}={by_difficulty[k]}" for k in sorted(by_difficulty))
+        print(f"  difficulty mix: {mix}")
+    for c in result.survivors:
+        tag = "" if c.canonical else " (variant)"
+        print(f"  ✓ {c.id}  [{c.difficulty or '—'}]{tag}  {c.evidence.row_count} row(s)")
+    queue_name = candidates_path(project).name
+    print(f"\n{result.n_survivors} candidate(s) queued → run `sqbyl review` ({queue_name})")
+    return 0
+
+
+def _review(args: list[str]) -> int:
+    """`sqbyl review [DIR] [--host H] [--port N]` — launch the local review console."""
+    import uvicorn
+
+    from sqbyl.console import create_app
+    from sqbyl.project import Project
+
+    host_opt, port_opt = _opt(args, "host"), _opt(args, "port")
+    consumed = {host_opt, port_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    host, port = host_opt or "127.0.0.1", int(port_opt) if port_opt else 8765
+
+    app = create_app(project)
+    print(f"▸ sqbyl review — golden-set console at http://{host}:{port}  (Ctrl-C to stop)  ($0)")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
+    return 0
+
+
 def _annotate(args: list[str]) -> int:
     """`sqbyl annotate [DIR] [--replay P] [--record P] [--model M] [--budget $N]`.
 
@@ -362,7 +467,14 @@ def main(argv: list[str] | None = None) -> int:
         return _ask(args[1:])
     if args and args[0] == "eval":
         return _eval(args[1:])
-    print("sqbyl: commands — introspect, profile, annotate, ask, eval, schema export, version")
+    if args and args[0] == "synth":
+        return _synth(args[1:])
+    if args and args[0] == "review":
+        return _review(args[1:])
+    print(
+        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, "
+        "schema export, version"
+    )
     return 0
 
 

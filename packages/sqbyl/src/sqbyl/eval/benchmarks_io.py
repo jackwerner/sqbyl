@@ -25,7 +25,7 @@ from pathlib import Path
 
 from sqbyl.models import BenchmarkQuestion
 from sqbyl.project import Project
-from sqbyl.yamlio import load_yaml
+from sqbyl.yamlio import dump_yaml, load_yaml
 
 
 class Split(StrEnum):
@@ -64,3 +64,42 @@ def load_dev_set(project: Project) -> list[BenchmarkQuestion]:
     the held-out test set (invariant 3).
     """
     return _read_set(project, Split.dev)
+
+
+def _read_dev_set_lenient(project: Project) -> list[BenchmarkQuestion]:
+    """Dev questions, or ``[]`` when ``dev.yaml`` doesn't exist yet (first synth run)."""
+    if not benchmark_path(project, Split.dev).exists():
+        return []
+    return _read_set(project, Split.dev)
+
+
+def _dump_questions(questions: list[BenchmarkQuestion]) -> str:
+    """Serialize benchmark questions to a YAML sequence, dropping empty/default fields."""
+    data = [q.model_dump(exclude_none=True, exclude_defaults=True) for q in questions]
+    return dump_yaml(data)
+
+
+def append_to_dev_set(
+    project: Project, questions: list[BenchmarkQuestion]
+) -> list[BenchmarkQuestion]:
+    """Append accepted questions to ``benchmarks/dev.yaml`` — the **only** writer.
+
+    Hard-wired to :attr:`Split.dev` (there is no ``split`` argument), so synth and the
+    review console can only ever grow the dev set — never the held-out ``test.yaml``
+    (invariant 3). Questions whose ``id`` already exists are skipped so re-accepting is
+    idempotent and hand edits are never clobbered; the accepted (newly added) questions
+    are returned. Appends as text so any hand-authored comments/order above survive.
+    """
+    existing_ids = {q.id for q in _read_dev_set_lenient(project)}
+    added = [q for q in questions if q.id not in existing_ids]
+    if not added:
+        return []
+    path = benchmark_path(project, Split.dev)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    prefix = ""
+    if path.exists() and path.stat().st_size > 0:
+        current = path.read_text()
+        # A blank line separates the appended block from prior content for readability.
+        prefix = (current if current.endswith("\n") else current + "\n") + "\n"
+    path.write_text(prefix + _dump_questions(added))
+    return added

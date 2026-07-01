@@ -10,6 +10,10 @@ dependencies = [
     "sqbyl-runtime",
     "pydantic>=2.7,<3",
     "pyyaml>=6",
+    # The review console (spec §6.5) is a local FastAPI app with a bundled UI. It lives
+    # in the dev toolkit only — the shipped `sqbyl-runtime` never carries a web stack.
+    "fastapi>=0.111",
+    "uvicorn>=0.30",
 ]
 
 [project.scripts]

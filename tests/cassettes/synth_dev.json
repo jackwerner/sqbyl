@@ -1,0 +1,146 @@
+{
+  "entries": {
+    "8fc0e81d7f5bd6f0396676785557864fac17033584dcc1686ec455173025db1e": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 8192,
+        "messages": [
+          {
+            "content": "SQL dialect: duckdb\n\nSCHEMA:\nTable: analytics.customers\n  One row per customer.\n  - customer_id (bigint) \u2014 Primary key.\n  - name (text) \u2014 Customer display name.\n  - email (text) \u2014 Contact email.\n  - region (text) \u2014 Sales region.\n  - plan (text) \u2014 Subscription tier.\n  - signup_date (date) \u2014 Date the customer signed up.\n  join -> analytics.orders ON customers.customer_id = orders.customer_id\n\nTable: analytics.orders\n  One row per confirmed order. Excludes carts and draft orders.\n  - order_id (bigint) \u2014 Primary key.\n  - customer_id (bigint) \u2014 FK to analytics.customers.customer_id.\n  - amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars.\n  - status (text) \u2014 One of 'confirmed','refunded','partial_refund'.\n  - created_at (timestamp) \u2014 Order confirmation time (UTC).\n  measure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0\n  filter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n  join -> analytics.customers ON orders.customer_id = customers.customer_id\n\nCOVERAGE SEEDS (aim to exercise these):\n- [easy] table:analytics.customers: a simple count or single-table aggregate over analytics.customers\n- [hard] join:analytics.customers->analytics.orders: a breakdown that joins analytics.customers to analytics.orders on customers.customer_id = orders.customer_id\n- [easy] table:analytics.orders: a simple count or single-table aggregate over analytics.orders\n- [medium] measure:analytics.orders.net_revenue: use the measure net_revenue := SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0\n- [medium] filter:analytics.orders.last_quarter: apply the named filter last_quarter := created_at >= date_trunc('quarter', now()) - interval '3 months'\n- [hard] join:analytics.orders->analytics.customers: a breakdown that joins analytics.orders to analytics.customers on orders.customer_id = customers.customer_id\n\nProduce about 7 candidate questions with gold SQL, spread across the seeds and difficulty levels, including a few phrasing variants. Return them all.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "$defs": {
+            "DraftQuestion": {
+              "description": "One model-proposed question + gold SQL, before it has been executed.",
+              "properties": {
+                "canonical": {
+                  "default": true,
+                  "title": "Canonical",
+                  "type": "boolean"
+                },
+                "difficulty": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Difficulty"
+                },
+                "gold_sql": {
+                  "title": "Gold Sql",
+                  "type": "string"
+                },
+                "group": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Group"
+                },
+                "question": {
+                  "title": "Question",
+                  "type": "string"
+                },
+                "seed": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null,
+                  "title": "Seed"
+                }
+              },
+              "required": [
+                "question",
+                "gold_sql"
+              ],
+              "title": "DraftQuestion",
+              "type": "object"
+            }
+          },
+          "description": "The structured result of the single paid drafting call.",
+          "properties": {
+            "questions": {
+              "items": {
+                "$ref": "#/$defs/DraftQuestion"
+              },
+              "title": "Questions",
+              "type": "array"
+            }
+          },
+          "title": "DraftBatch",
+          "type": "object"
+        },
+        "system": "You author evaluation questions for a text-to-SQL benchmark. For each question you also write the GOLD SQL that answers it. Rules: (1) every query must be a single read-only SELECT in the given SQL dialect; (2) use the fully-qualified table names and real columns from the schema \u2014 never invent columns; (3) each gold query must actually return rows against real data (avoid impossible filters); (4) exercise the provided measures, named filters, and joins \u2014 that is the business logic worth testing; (5) for some canonical questions, add one or two phrasing VARIANTS that ask the same thing differently, sharing a `group` slug with their canonical question and setting canonical=false. Stratify difficulty across easy/medium/hard.",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "questions": [
+            {
+              "canonical": true,
+              "difficulty": "easy",
+              "gold_sql": "SELECT COUNT(*) FROM analytics.orders",
+              "group": "orders_total",
+              "question": "How many orders are there?"
+            },
+            {
+              "canonical": false,
+              "difficulty": "easy",
+              "gold_sql": "SELECT COUNT(*) AS n FROM analytics.orders",
+              "group": "orders_total",
+              "question": "Total order count please"
+            },
+            {
+              "difficulty": "hard",
+              "gold_sql": "SELECT c.region, SUM(o.amount_cents)/100.0 AS r FROM analytics.orders o JOIN analytics.customers c ON o.customer_id=c.customer_id GROUP BY c.region",
+              "question": "Revenue by region"
+            },
+            {
+              "gold_sql": "SELECT nope FROM analytics.orders",
+              "question": "Nonexistent column"
+            },
+            {
+              "gold_sql": "SELECT * FROM analytics.orders WHERE status='does-not-exist'",
+              "question": "Impossible filter"
+            },
+            {
+              "gold_sql": "DELETE FROM analytics.orders",
+              "question": "A write"
+            },
+            {
+              "gold_sql": "SELECT NULL AS x WHERE 1=1",
+              "question": "All null"
+            }
+          ]
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    }
+  },
+  "version": 1
+}

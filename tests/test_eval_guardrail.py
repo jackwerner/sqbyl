@@ -54,3 +54,30 @@ def test_eval_door_can_read_both_splits(dogfood_dir: Path) -> None:
     project = Project.load(dogfood_dir)
     assert load_for_eval(project, Split.dev)
     assert load_for_eval(project, "test")  # accepts the split by name too
+
+
+def test_dev_writer_is_hard_wired_to_dev(dogfood_dir: Path) -> None:
+    # The only benchmark writer takes no `split`, so synth/console cannot write test.yaml
+    # (invariant 3). The read-side boundary above has a matching write-side guarantee.
+    from sqbyl.eval.benchmarks_io import append_to_dev_set
+
+    params = list(inspect.signature(append_to_dev_set).parameters)
+    assert params == ["project", "questions"]
+
+
+def test_synth_module_does_not_import_the_held_out_door() -> None:
+    # The dev loop (synth) must not even import `sqbyl.eval.heldout` — the same rule the
+    # import-linter `forbidden` contract enforces, asserted here at the AST level too
+    # (docstrings may mention the module by name; only real imports are a violation).
+    import ast
+
+    import sqbyl.synth
+
+    tree = ast.parse(inspect.getsource(sqbyl.synth))
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported.add(node.module)
+        elif isinstance(node, ast.Import):
+            imported.update(alias.name for alias in node.names)
+    assert "sqbyl.eval.heldout" not in imported
