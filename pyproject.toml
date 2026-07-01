@@ -61,3 +61,17 @@ name = "sqbyl_runtime must not import the dev toolkit"
 type = "forbidden"
 source_modules = ["sqbyl_runtime"]
 forbidden_modules = ["sqbyl"]
+
+# Dev/test boundary (invariant 3, plan 3.4). Today the held-out set is guarded by code
+# shape (test.yaml is loadable only via `sqbyl.eval.heldout`; `benchmarks_io`'s only
+# public reader is the dev-hard-wired `load_dev_set` — the generic reader is private
+# `_read_set`) plus a guardrail test. A `forbidden` import-linter contract can't be added
+# cleanly yet: everything routes through the `sqbyl.project` substrate hub (which lazily
+# imports the eval runner, which legitimately imports `heldout`), so a transitive-catching
+# contract would false-positive.
+#
+# TODO (Phases 4–8): when `sqbyl.coach`, `sqbyl.synth`, and `sqbyl.optimize` land as their
+# own modules, add a `forbidden` contract with those as source_modules and
+# `sqbyl.eval.heldout` forbidden — those modules won't route through the Project hub the
+# way `eval` does, so the held-out set becomes structurally unreachable by the loop that
+# optimizes on dev. (Can't be added now — import-linter errors on nonexistent modules.)

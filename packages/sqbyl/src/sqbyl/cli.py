@@ -176,6 +176,99 @@ def _ask(args: list[str]) -> int:
     return 0 if result.ok else 1
 
 
+def _eval(args: list[str]) -> int:
+    """`sqbyl eval [dev|test] [DIR] [--replay P] [--record P] [--as-of ISO]`.
+
+    Runs each question as a fresh, stateless ``ask()``, scores it with the Layer-1
+    deterministic scorers, prints per-run aggregates (accuracy with a 95% interval /
+    manual-review / cost / latency), and — when an earlier run of the same split exists —
+    the flipped-questions diff (regression detection, spec §7). Dev and test are always
+    reported separately. ``--as-of`` pins the clock for ``now()``-relative gold so runs
+    are reproducible across time.
+    """
+    from datetime import datetime
+
+    from sqbyl.eval.benchmarks_io import Split
+    from sqbyl.eval.heldout import load_for_eval
+    from sqbyl.eval.report import diff_runs, load_runs, previous_run
+    from sqbyl.project import Project
+    from sqbyl_runtime.cost import estimate_cost
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    replay, record, as_of_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "as-of")
+    consumed = {replay, record, as_of_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    split_arg = "dev"
+    if positional and positional[0] in ("dev", "test"):
+        split_arg = positional.pop(0)
+    project = Project.load(positional[0] if positional else ".")
+    try:
+        split = Split(split_arg)
+    except ValueError:
+        print(f"unknown split {split_arg!r}; expected 'dev' or 'test'")
+        return 2
+    try:
+        as_of = datetime.fromisoformat(as_of_opt) if as_of_opt else None
+    except ValueError:
+        print(f"invalid --as-of {as_of_opt!r}; expected an ISO datetime like 2026-06-30")
+        return 2
+
+    model = project.manifest.model.for_role("agent")
+    questions = load_for_eval(project, split)
+    if not questions:
+        print(f"benchmarks/{split.value}.yaml has no questions — run `sqbyl synth` first")
+        return 1
+
+    paths = SqbylPaths(project.root)
+    if split is Split.test:
+        # The held-out set is the honest, headline number; scoring it repeatedly while
+        # iterating leaks it (spec §7). Nudge, and surface how often it's been scored.
+        prior_test = len(load_runs(paths, split="test"))
+        if prior_test:
+            print(
+                f"⚠ held-out test scored {prior_test} time(s) before — score it sparingly "
+                "(ideally once per blessed version); iterate on dev."
+            )
+
+    est = estimate_cost(
+        model=model, calls=len(questions), avg_input_tokens=1500, avg_output_tokens=300
+    )
+    print(
+        f"▸ eval {split.value} — {len(questions)} question(s) on {model}, "
+        f"estimated ~${est:.4f} (paid)"
+    )
+
+    run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
+
+    lo, hi = run.accuracy_ci()
+    print(
+        f"\naccuracy: {run.n_correct}/{run.total} ({run.accuracy:.1%}"
+        f", 95% CI {lo:.0%}–{hi:.0%})"
+        f" · manual review: {run.n_manual_review} · errors: {run.n_error}"
+    )
+    print(
+        f"self-repair: {run.self_repair_rate:.1%} · mean latency: {run.mean_latency_ms:.0f}ms"
+        f" · {run.total_tokens} tokens · ${run.total_cost_usd:.4f}"
+    )
+    print("models: " + ", ".join(f"{role}={m}" for role, m in sorted(run.models.items())))
+    for r in run.results:
+        mark = {"correct": "✓", "manual_review": "?", "error": "✗"}[r.verdict.value]
+        print(f"  {mark} {r.id}  [{r.verdict.value}]")
+
+    prev = previous_run(paths, run)
+    if prev is not None:
+        d = diff_runs(prev, run)
+        if d.fixed or d.regressed:
+            print(f"\nvs previous {split.value} run ({prev.run_id[:8]}):")
+            if d.fixed:
+                print(f"  fixed:     {', '.join(d.fixed)}")
+            if d.regressed:
+                print(f"  regressed: {', '.join(d.regressed)}")
+        else:
+            print(f"\nvs previous {split.value} run ({prev.run_id[:8]}): no questions flipped")
+    return 0
+
+
 def _annotate(args: list[str]) -> int:
     """`sqbyl annotate [DIR] [--replay P] [--record P] [--model M] [--budget $N]`.
 
@@ -267,7 +360,9 @@ def main(argv: list[str] | None = None) -> int:
         return _annotate(args[1:])
     if args and args[0] == "ask":
         return _ask(args[1:])
-    print("sqbyl: commands — introspect, profile, annotate, ask, schema export, version")
+    if args and args[0] == "eval":
+        return _eval(args[1:])
+    print("sqbyl: commands — introspect, profile, annotate, ask, eval, schema export, version")
     return 0
 
 
