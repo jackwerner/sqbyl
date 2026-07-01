@@ -35,6 +35,13 @@ def load_runs(paths: SqbylPaths, *, split: str | None = None) -> list[ScoredRun]
     return sorted(runs, key=lambda r: (r.created_at, r.run_id))
 
 
+def latest_run(paths: SqbylPaths, *, split: str | None = None) -> ScoredRun | None:
+    """The most recent persisted run (optionally for one split), or ``None`` if there are
+    none — the run the review console opens onto (spec §6.5/§7)."""
+    runs = load_runs(paths, split=split)
+    return runs[-1] if runs else None
+
+
 def previous_run(paths: SqbylPaths, run: ScoredRun) -> ScoredRun | None:
     """The most recent earlier run of the same split — the baseline for a diff."""
     earlier = [

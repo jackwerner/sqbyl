@@ -10,12 +10,18 @@
   header { display: flex; align-items: baseline; gap: .75rem; border-bottom: 1px solid var(--line);
            padding-bottom: .75rem; margin-bottom: 1rem; }
   h1 { font-size: 1.1rem; margin: 0; }
+  .tabs { margin-left: auto; display: flex; gap: .4rem; }
+  .tab { cursor: pointer; border: 1px solid var(--line); border-radius: 7px; padding: .15rem .6rem;
+         font-size: .82rem; color: var(--dim); background: transparent; }
+  .tab.active { color: inherit; background: #8881; font-weight: 600; }
   .counts { color: var(--dim); font-size: .85rem; }
   .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; }
   .q { font-size: 1.15rem; font-weight: 600; margin: 0 0 .35rem; }
   .meta { color: var(--dim); font-size: .8rem; margin-bottom: .75rem; }
   .badge { display: inline-block; border: 1px solid var(--line); border-radius: 999px;
            padding: 0 .5rem; margin-right: .35rem; }
+  .badge.ok { color: var(--ok); border-color: var(--ok); }
+  .badge.bad { color: var(--bad); border-color: var(--bad); }
   pre, textarea { font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
   pre { background: #8881; border-radius: 8px; padding: .7rem .8rem; overflow-x: auto; margin: 0; }
   textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: .6rem; }
@@ -36,33 +42,55 @@
   .empty { text-align: center; color: var(--dim); padding: 3rem 0; }
   .rerun-msg.bad { color: var(--bad); }
   .rerun-msg.ok { color: var(--ok); }
+  .judge { margin: .15rem 0; font-size: .85rem; }
+  .rationale { color: var(--dim); }
+  .headline { font-size: .85rem; color: var(--dim); margin-bottom: .8rem; }
+  .headline b { color: inherit; }
 </style>
 
 <header>
   <h1>sqbyl review</h1>
   <span class="counts" id="counts"></span>
+  <div class="tabs">
+    <button class="tab active" id="tab-candidates">candidates</button>
+    <button class="tab" id="tab-review">judge review</button>
+  </div>
 </header>
 
 <main id="main"></main>
 
-<div class="keys" id="keys">
-  <kbd>a</kbd> accept · <kbd>e</kbd> edit · <kbd>r</kbd> reject · <kbd>A</kbd> accept all ·
-  in edit: <kbd>⌘/Ctrl+Enter</kbd> re-run
-</div>
+<div class="keys" id="keys"></div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 const $ = (s) => document.querySelector(s);
-let queue = [];       // pending candidates
+let mode = "candidates";       // "candidates" | "review"
+
+// candidate-queue state
+let queue = [];
 let idx = 0;
 let editing = false;
+
+// judge-review state
+let reviewRows = [];
+let reviewIdx = 0;
+let headline = null;
 
 function toast(msg) {
   const t = $("#toast");
   t.textContent = msg; t.classList.add("show");
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 1400);
 }
+
+function setMode(m) {
+  mode = m;
+  $("#tab-candidates").classList.toggle("active", m === "candidates");
+  $("#tab-review").classList.toggle("active", m === "review");
+  m === "candidates" ? load() : loadReview();
+}
+
+// ---- candidate queue (Phase 4) --------------------------------------------------------
 
 async function load() {
   const data = await (await fetch("/api/candidates")).json();
@@ -83,6 +111,8 @@ function evidenceTable(ev) {
 }
 
 function render() {
+  $("#keys").innerHTML = `<kbd>a</kbd> accept · <kbd>e</kbd> edit · <kbd>r</kbd> reject ·
+    <kbd>A</kbd> accept all · in edit: <kbd>⌘/Ctrl+Enter</kbd> re-run`;
   const main = $("#main");
   if (!queue.length) {
     main.innerHTML = `<div class="empty">No pending candidates. 🎉<br>Run <code>sqbyl synth</code> to propose more.</div>`;
@@ -143,8 +173,6 @@ async function accept(edited) {
     : {};
   const res = await post(`/api/candidates/${c.id}/accept`, body);
   if (res.ok === false) {
-    // Re-grounding refused it: the gold SQL no longer runs. Stay on the card so the
-    // reviewer can fix it (press `e`) rather than silently admitting a broken answer.
     toast(`✗ not accepted — gold SQL ${res.reason}`);
     return;
   }
@@ -170,6 +198,91 @@ async function acceptAll() {
   await load();
 }
 
+// ---- judge review (Phase 5.2) ---------------------------------------------------------
+
+async function loadReview() {
+  const data = await (await fetch("/api/review?split=dev")).json();
+  headline = data.run;
+  reviewRows = data.rows || [];
+  // Land on the first unreviewed row so a reviewer works the pile top-down.
+  const firstOpen = reviewRows.findIndex((r) => !r.reviewed);
+  reviewIdx = firstOpen === -1 ? 0 : firstOpen;
+  renderReview();
+}
+
+function pct(x) { return x == null ? "—" : (x * 100).toFixed(0) + "%"; }
+
+function renderReview() {
+  $("#keys").innerHTML = `<kbd>g</kbd> agree with judge · <kbd>c</kbd> correct ·
+    <kbd>x</kbd> incorrect · <kbd>s</kbd> keep in review · <kbd>←</kbd>/<kbd>→</kbd> prev/next`;
+  const main = $("#main");
+  if (!headline) {
+    main.innerHTML = `<div class="empty">No eval run yet.<br>Run <code>sqbyl eval dev</code> first.</div>`;
+    $("#counts").textContent = "";
+    return;
+  }
+  const ag = headline.agreement;
+  $("#counts").innerHTML =
+    `<span class="headline">deterministic <b>${pct(headline.accuracy)}</b> · ` +
+    `resolved <b>${pct(headline.resolved_accuracy)}</b> · ` +
+    `${headline.n_unreviewed} to review · ` +
+    `judge↔human agreement (reviewed rows) <b>${pct(ag.rate)}</b>${ag.n ? ` (${ag.n_agree}/${ag.n})` : ""}</span>`;
+
+  if (!reviewRows.length) {
+    main.innerHTML = `<div class="empty">Nothing to review — the deterministic scorers resolved every row. 🎉</div>`;
+    return;
+  }
+  const r = reviewRows[reviewIdx];
+  const sug = r.judge_suggestion;
+  const sugLabel = { correct: "likely-equivalent", incorrect: "likely-wrong", manual_review: "ambiguous" }[sug] || "no suggestion";
+  const judges = r.judge_verdicts.map((j) =>
+    `<div class="judge">${j.passed ? "✓" : "✗"} <b>${esc(j.judge)}</b>
+       <span class="rationale">(${pct(j.confidence)}) — ${esc(j.rationale || "")}</span></div>`
+  ).join("");
+  const resolved = r.reviewed
+    ? `<span class="badge ${r.human_verdict === "correct" ? "ok" : r.human_verdict === "incorrect" ? "bad" : ""}">you: ${esc(r.human_verdict)}</span>`
+    : "";
+  main.innerHTML = `
+    <div class="card">
+      <p class="q">${esc(r.question)}</p>
+      <div class="meta">${reviewIdx + 1} / ${reviewRows.length} · <code>${esc(r.id)}</code>
+        <span class="badge">judge: ${sugLabel}</span> ${resolved}</div>
+      <label>generated SQL</label>
+      <pre>${esc(r.generated_sql)}</pre>
+      <label>gold SQL</label>
+      <pre>${esc(r.gold_sql || "(none)")}</pre>
+      <label>why it needs review</label>
+      ${judges || '<div class="rationale">no judge ran on this row.</div>'}
+      <div style="margin-top:.7rem; display:flex; gap:.5rem; flex-wrap:wrap">
+        <button id="rv-agree">agree with judge (g)</button>
+        <button id="rv-correct">correct (c)</button>
+        <button id="rv-incorrect">incorrect (x)</button>
+        <button id="rv-keep">keep in review (s)</button>
+      </div>
+    </div>`;
+  $("#rv-agree").onclick = () => resolve(sug || "manual_review");
+  $("#rv-correct").onclick = () => resolve("correct");
+  $("#rv-incorrect").onclick = () => resolve("incorrect");
+  $("#rv-keep").onclick = () => resolve("manual_review");
+}
+
+async function resolve(verdict) {
+  const r = reviewRows[reviewIdx];
+  if (!r) return;
+  const res = await post(`/api/review/${r.id}/resolve`, { verdict, split: "dev" });
+  if (res.ok === false || res.detail) { toast(`✗ ${res.detail || "could not resolve"}`); return; }
+  headline = res.run;
+  reviewRows[reviewIdx] = res.row;
+  const agreed = r.judge_suggestion && verdict === r.judge_suggestion;
+  toast(`resolved ${verdict}${r.judge_suggestion ? (agreed ? " · agreed with judge" : " · overrode judge") : ""}`);
+  // Advance to the next still-unreviewed row.
+  const next = reviewRows.findIndex((x, i) => i > reviewIdx && !x.reviewed);
+  reviewIdx = next === -1 ? reviewIdx : next;
+  renderReview();
+}
+
+// ---- shared ---------------------------------------------------------------------------
+
 async function post(url, body) {
   return (await fetch(url, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
@@ -179,8 +292,21 @@ async function post(url, body) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = (v) => v === null ? "∅" : v;
 
+$("#tab-candidates").onclick = () => setMode("candidates");
+$("#tab-review").onclick = () => setMode("review");
+
 document.addEventListener("keydown", (e) => {
   const inField = ["TEXTAREA", "INPUT"].includes(e.target.tagName);
+  if (mode === "review") {
+    if (inField || !reviewRows.length) return;
+    if (e.key === "g") { e.preventDefault(); $("#rv-agree").click(); }
+    else if (e.key === "c") { e.preventDefault(); resolve("correct"); }
+    else if (e.key === "x") { e.preventDefault(); resolve("incorrect"); }
+    else if (e.key === "s") { e.preventDefault(); resolve("manual_review"); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); reviewIdx = Math.min(reviewRows.length - 1, reviewIdx + 1); renderReview(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); reviewIdx = Math.max(0, reviewIdx - 1); renderReview(); }
+    return;
+  }
   if (editing) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); rerun(); }
     if (e.key === "Escape") { editing = false; render(); }

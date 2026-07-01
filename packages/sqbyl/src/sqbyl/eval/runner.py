@@ -13,8 +13,10 @@ record-replay with an injected LLM client (invariant 4).
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
+from sqbyl.calibration_io import few_shot_examples
 from sqbyl.eval.benchmarks_io import Split
 from sqbyl.eval.heldout import load_for_eval
 from sqbyl.eval.judges import (
@@ -24,7 +26,7 @@ from sqbyl.eval.judges import (
     load_judge_prompts,
 )
 from sqbyl.eval.scorers import score_question
-from sqbyl.models import BenchmarkQuestion
+from sqbyl.models import BenchmarkQuestion, CalibrationRecord
 from sqbyl.models.runs import QuestionResult, ScoredRun
 from sqbyl.project import Project
 from sqbyl.projectfiles import load_knowledge, load_trusted_assets
@@ -53,6 +55,7 @@ def score_run(
     judge_model: str | None = None,
     judge_prompts: dict[str, str] | None = None,
     judge_min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    judge_examples: list[CalibrationRecord] | None = None,
     trace_writer: TraceWriter | None = None,
 ) -> ScoredRun:
     """Core: score a list of questions with injected deps. See :func:`run_eval` for the
@@ -122,6 +125,7 @@ def score_run(
                 dialect=dialect,
                 model=judge_model,
                 min_confidence=judge_min_confidence,
+                examples=judge_examples,
                 trace_writer=trace_writer,
                 trace_id=answer.trace_id,
             )
@@ -166,8 +170,19 @@ def score_run(
         split=split,
         models=models,
         as_of=as_of,
+        judge_calibration=_calibration_fingerprint(judge_examples),
         results=results,
     )
+
+
+def _calibration_fingerprint(examples: list[CalibrationRecord] | None) -> str | None:
+    """A stable fingerprint of the few-shot anchors that coached the judge this run, so a
+    judged run is reproducible from its stamped inputs (spec §7/§11). ``None`` when the judge
+    was un-coached."""
+    if not examples:
+        return None
+    key = "\n".join(f"{e.question_id}:{e.human_verdict.value}:{e.note}" for e in examples)
+    return f"n={len(examples)},sha={hashlib.sha256(key.encode()).hexdigest()[:12]}"
 
 
 def run_eval(
@@ -211,5 +226,15 @@ def run_eval(
             judge_llm=llm if judge_on else None,
             judge_model=project.manifest.model.for_role("judge") if judge_on else None,
             judge_prompts=load_judge_prompts(project) if judge_on else None,
+            # Prior human rulings coach the judge (spec §7) — but only on **dev**. The
+            # held-out test judge stays pristine (no few-shot) so the measurement instrument
+            # doesn't drift, and dev rulings can never leak into test judging (invariant 3).
+            # Empty until someone reviews, so a fresh project's prompts (and CI cassettes)
+            # are unchanged.
+            judge_examples=(
+                few_shot_examples(project, split=split.value)
+                if judge_on and split is Split.dev
+                else None
+            ),
             trace_writer=trace_writer,
         )

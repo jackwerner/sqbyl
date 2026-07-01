@@ -28,6 +28,7 @@ from sqbyl.models import (
     ALL_JUDGES,
     GOLD_MISMATCH_JUDGES,
     NO_GOLD_JUDGES,
+    CalibrationRecord,
     JudgeVerdict,
     Verdict,
 )
@@ -102,6 +103,45 @@ def test_run_judge_stamps_the_judge_name_and_uses_the_prompt() -> None:
     assert verdict.passed is True
     assert mock.requests[0].system == "JUDGE PROMPT TEXT"  # the editable prompt is the system
     assert usage.total_tokens > 0
+    # With no calibration examples, the prompt carries no coaching block (so a fresh
+    # project's judge requests — and the CI cassettes — are unchanged).
+    assert "PRIOR HUMAN RULINGS" not in mock.requests[0].messages[-1].content
+
+
+def test_run_judge_injects_prior_human_rulings_as_few_shot() -> None:
+    # A human override becomes a calibration example replayed to the judge (spec §7).
+    example = CalibrationRecord(
+        run_id="r1",
+        question_id="q1",
+        judge_suggestion=Verdict.incorrect,
+        human_verdict=Verdict.correct,
+        agreed=False,
+        question="How many paying customers?",
+        generated_sql="SELECT count(*) FROM analytics.customers WHERE plan <> 'free'",
+        gold_sql="SELECT count(*) FROM analytics.customers WHERE is_active",
+        note="'paying' means not on the free plan here",
+    )
+    mock = MockLLMClient(
+        [structured_reply({"judge": "x", "passed": True, "confidence": 0.9, "rationale": "ok"})]
+    )
+    run_judge(
+        mock,
+        "semantic_equivalence",
+        "PROMPT",
+        question="How many orders?",
+        generated_sql="SELECT count(*) FROM analytics.orders",
+        gold_sql="SELECT count(*) FROM analytics.orders",
+        dialect=Dialect.duckdb,
+        model="claude-x",
+        examples=[example],
+    )
+    case = mock.requests[0].messages[-1].content
+    assert "PRIOR HUMAN RULINGS" in case  # the coaching block is present
+    assert "How many paying customers?" in case  # the example's question
+    # Framed as the row's overall disposition, not a per-dimension label (avoids mis-coaching
+    # a narrow-dimension judge).
+    assert "final disposition of the row: correct" in case
+    assert "not on the free plan" in case  # the human's note rides along
 
 
 # --- the arbiter: which judges run, and the short-circuit ------------------------------

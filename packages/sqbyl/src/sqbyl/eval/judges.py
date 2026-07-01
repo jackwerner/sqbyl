@@ -27,6 +27,7 @@ from sqbyl.models import (
     ALL_JUDGES,
     GOLD_MISMATCH_JUDGES,
     NO_GOLD_JUDGES,
+    CalibrationRecord,
     JudgeVerdict,
     Verdict,
 )
@@ -118,11 +119,44 @@ class ArbiterOutcome:
     usage: Usage = field(default_factory=Usage)
 
 
+def _render_examples(examples: list[CalibrationRecord]) -> str:
+    """Prior human rulings, rendered as few-shot calibration for the judge (spec §7).
+
+    These are ground-truth anchors: on similar cases, this is how a human ruled. Returns
+    the empty string when there are none, so an un-reviewed project's prompt is unchanged."""
+    if not examples:
+        return ""
+    # These anchors carry the human's *overall disposition of the row*, not a verdict on your
+    # specific dimension — so they're framed as context for calibrating to this team's bar,
+    # not as a label to copy onto your own judgement.
+    lines = [
+        "PRIOR HUMAN RULINGS ON SIMILAR CASES — how this team ultimately disposed of the whole "
+        "row (not a verdict on your specific dimension). Use them to calibrate to the team's "
+        "bar; still judge your own dimension on its merits:"
+    ]
+    for ex in examples:
+        gold = ex.gold_sql if ex.gold_sql is not None else "(none)"
+        note = f" — the human's reason: {ex.note}" if ex.note else ""
+        lines.append(
+            f"- Question: {ex.question}\n"
+            f"  Generated: {ex.generated_sql}\n"
+            f"  Gold: {gold}\n"
+            f"  Human's final disposition of the row: {ex.human_verdict.value}{note}"
+        )
+    return "\n".join(lines) + "\n\n"
+
+
 def _render_case(
-    *, question: str, generated_sql: str, gold_sql: str | None, dialect: Dialect
+    *,
+    question: str,
+    generated_sql: str,
+    gold_sql: str | None,
+    dialect: Dialect,
+    examples: list[CalibrationRecord] | None = None,
 ) -> str:
     gold_block = gold_sql if gold_sql is not None else "(none — no gold query for this question)"
     return (
+        f"{_render_examples(examples or [])}"
         f"SQL dialect: {dialect.value}\n\n"
         f"QUESTION:\n{question}\n\n"
         f"GENERATED SQL (the answer under evaluation):\n{generated_sql}\n\n"
@@ -142,13 +176,15 @@ def run_judge(
     gold_sql: str | None,
     dialect: Dialect,
     model: str,
+    examples: list[CalibrationRecord] | None = None,
     trace_writer: TraceWriter | None = None,
     trace_id: str | None = None,
     parent_span_id: str | None = None,
 ) -> tuple[JudgeVerdict | None, Usage]:
     """One judge, one paid structured call → a :class:`JudgeVerdict` (or ``None``).
 
-    The editable ``prompt`` is the system message; the case is the user message. The
+    The editable ``prompt`` is the system message; the case is the user message, optionally
+    prefixed with prior human rulings (``examples``) that coach the judge (spec §7). The
     ``judge`` field is stamped from ``name`` after parsing, so a verdict is always
     attributed to the judge that produced it regardless of what the model echoes. Written
     as an OTel-GenAI span when a ``trace_writer`` is given (invariant 7).
@@ -168,6 +204,7 @@ def run_judge(
                     generated_sql=generated_sql,
                     gold_sql=gold_sql,
                     dialect=dialect,
+                    examples=examples,
                 ),
             )
         ],
@@ -235,6 +272,7 @@ def adjudicate(
     dialect: Dialect,
     model: str,
     min_confidence: float = DEFAULT_MIN_CONFIDENCE,
+    examples: list[CalibrationRecord] | None = None,
     trace_writer: TraceWriter | None = None,
     trace_id: str | None = None,
     parent_span_id: str | None = None,
@@ -253,7 +291,8 @@ def adjudicate(
     already sits, so a flaky judge degrades to "a human looks", never to a lost run.
 
     ``prompts`` maps judge name → prompt text (see :func:`load_judge_prompts`), keeping the
-    arbiter project-free.
+    arbiter project-free. ``examples`` are prior human rulings replayed to every judge as
+    few-shot calibration (see :func:`sqbyl.calibration_io.few_shot_examples`).
     """
     if verdict is not Verdict.manual_review:
         return ArbiterOutcome(suggestion=None)
@@ -269,6 +308,7 @@ def adjudicate(
             prompts[name],
             question=question,
             generated_sql=generated_sql,
+            examples=examples,
             gold_sql=gold_sql,
             dialect=dialect,
             model=model,

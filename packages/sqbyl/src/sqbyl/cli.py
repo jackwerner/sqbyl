@@ -236,7 +236,8 @@ def _eval(args: list[str]) -> int:
     )
     judging = project.manifest.automation.auto_judge
     judge_note = (
-        " (agent only; judging adds up to 3 calls per review-pile row, metered live)"
+        " (agent only; judging adds up to 3 calls per review-pile row — plus a small few-shot "
+        "preamble once the judge is calibrated — all metered live)"
         if judging
         else ""
     )
