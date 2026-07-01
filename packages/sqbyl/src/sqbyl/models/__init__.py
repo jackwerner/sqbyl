@@ -14,13 +14,35 @@ from sqbyl.models.manifest import (
     ModelConfig,
     SqbylManifest,
 )
+from sqbyl.models.runs import (
+    SCORER_ASSET_ROUTING,
+    SCORER_RESULT_CORRECTNESS,
+    SCORER_SCHEMA_ACCURACY,
+    SCORER_SYNTAX_VALIDITY,
+    OverfittingSignal,
+    QuestionResult,
+    RunDiff,
+    ScoredRun,
+    ScorerResult,
+    Verdict,
+)
 
 __all__ = [
     "MODEL_ROLES",
+    "SCORER_ASSET_ROUTING",
+    "SCORER_RESULT_CORRECTNESS",
+    "SCORER_SCHEMA_ACCURACY",
+    "SCORER_SYNTAX_VALIDITY",
     "AutomationConfig",
     "BenchmarkQuestion",
     "DatabaseConfig",
     "DefaultsConfig",
     "ModelConfig",
+    "OverfittingSignal",
+    "QuestionResult",
+    "RunDiff",
+    "ScoredRun",
+    "ScorerResult",
     "SqbylManifest",
+    "Verdict",
 ]

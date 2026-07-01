@@ -1,0 +1,305 @@
+{
+  "entries": {
+    "27a7fbb42e5c98b9259e2f0f1f66deb3025fccd7ef76eb1a19cf6415abfd9a54": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: How many orders are there in total?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.customers \u2014 One row per customer.\nsynonyms: accounts, users\ncolumns:\n- customer_id (bigint) \u2014 Primary key. [range: 1..200]\n- name (text) \u2014 Customer display name.\n- email (text) \u2014 Contact email.\n- region (text) \u2014 Sales region. [values: us, emea, apac, latam]\n- plan (text) \u2014 Subscription tier. [values: free, pro, enterprise]\n- signup_date (date) \u2014 Date the customer signed up. [range: 2018-06-01..2025-05-31]\njoin: one_to_many -> analytics.orders ON customers.customer_id = orders.customer_id\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "answer q_total_orders",
+          "sql": "SELECT COUNT(*) FROM analytics.orders;",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    },
+    "5b4816094e6576dec3a1d7c41cafd0c1bd1393e71ab8c38cfbbcf27233f1a587": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: What is net revenue broken down by region?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.customers \u2014 One row per customer.\nsynonyms: accounts, users\ncolumns:\n- customer_id (bigint) \u2014 Primary key. [range: 1..200]\n- name (text) \u2014 Customer display name.\n- email (text) \u2014 Contact email.\n- region (text) \u2014 Sales region. [values: us, emea, apac, latam]\n- plan (text) \u2014 Subscription tier. [values: free, pro, enterprise]\n- signup_date (date) \u2014 Date the customer signed up. [range: 2018-06-01..2025-05-31]\njoin: one_to_many -> analytics.orders ON customers.customer_id = orders.customer_id\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "answer q_revenue_by_region",
+          "sql": "SELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region ORDER BY net_revenue DESC;",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    },
+    "6f26ef01475c7b2b6b0a19917dc8ddb05d21cf89b84fb2829e8e3b81af59d33f": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: What is total net revenue?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.customers \u2014 One row per customer.\nsynonyms: accounts, users\ncolumns:\n- customer_id (bigint) \u2014 Primary key. [range: 1..200]\n- name (text) \u2014 Customer display name.\n- email (text) \u2014 Contact email.\n- region (text) \u2014 Sales region. [values: us, emea, apac, latam]\n- plan (text) \u2014 Subscription tier. [values: free, pro, enterprise]\n- signup_date (date) \u2014 Date the customer signed up. [range: 2018-06-01..2025-05-31]\njoin: one_to_many -> analytics.orders ON customers.customer_id = orders.customer_id\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "answer q_net_revenue_all",
+          "sql": "SELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders WHERE status='confirmed';",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    },
+    "bcf7cb7f3886640afb5e20316d5136d0ac7a631da539d13f2baf1250d10f00c4": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: How many customers are on each plan?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.customers \u2014 One row per customer.\nsynonyms: accounts, users\ncolumns:\n- customer_id (bigint) \u2014 Primary key. [range: 1..200]\n- name (text) \u2014 Customer display name.\n- email (text) \u2014 Contact email.\n- region (text) \u2014 Sales region. [values: us, emea, apac, latam]\n- plan (text) \u2014 Subscription tier. [values: free, pro, enterprise]\n- signup_date (date) \u2014 Date the customer signed up. [range: 2018-06-01..2025-05-31]\njoin: one_to_many -> analytics.orders ON customers.customer_id = orders.customer_id\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "answer q_customers_by_plan",
+          "sql": "SELECT plan, COUNT(*) AS n FROM analytics.customers GROUP BY plan ORDER BY n DESC;",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    },
+    "d9f43caf9117de304338adabb2ec92ced829814588182daf05947e2be12d6f9c": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: How many orders were refunded?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.customers \u2014 One row per customer.\nsynonyms: accounts, users\ncolumns:\n- customer_id (bigint) \u2014 Primary key. [range: 1..200]\n- name (text) \u2014 Customer display name.\n- email (text) \u2014 Contact email.\n- region (text) \u2014 Sales region. [values: us, emea, apac, latam]\n- plan (text) \u2014 Subscription tier. [values: free, pro, enterprise]\n- signup_date (date) \u2014 Date the customer signed up. [range: 2018-06-01..2025-05-31]\njoin: one_to_many -> analytics.orders ON customers.customer_id = orders.customer_id\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "mock",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "answer q_refunded_count",
+          "sql": "SELECT COUNT(*) FROM analytics.orders WHERE status='refunded';",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    }
+  },
+  "version": 1
+}
