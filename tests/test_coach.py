@@ -442,6 +442,16 @@ def test_apply_refuses_benchmarks_and_path_escapes(
     with pytest.raises(ApplyError, match="only edits the agent's context"):
         apply_proposal(project, _target("Benchmarks/test.yaml"))  # case-insensitive lookalike
 
+    # Traversal out of a writable dir into benchmarks resolves+refuses (not a string match).
+    with pytest.raises(ApplyError):
+        apply_proposal(project, _target("semantics/../benchmarks/test.yaml"))
+    # A symlink sitting *inside* a writable dir but pointing at the held-out set is refused,
+    # because .resolve() follows it to benchmarks/ (which isn't in the allowlist).
+    link = project.root / "semantics" / "sneaky.yaml"
+    link.symlink_to(project.root / "benchmarks" / "test.yaml")
+    with pytest.raises(ApplyError):
+        apply_proposal(project, _target("semantics/sneaky.yaml"))
+
     # …but the legitimate context surface (including a top-level instructions.md) is writable.
     p = apply_proposal(project, _target("instructions.md"))
     assert p.name == "instructions.md"

@@ -349,8 +349,14 @@ def _current_file_text(project: Project, target_file: str) -> str:
 # The only files `coach apply` may write: the agent's *context*. An ALLOWLIST, not a
 # benchmarks denylist — so the Coach can never touch the held-out ``test.yaml`` (invariant 3),
 # the manifest (``sqbyl.yaml``, which holds DB config), or ``.sqbyl/`` state, even via a
-# lookalike path. ``.resolve()`` normalizes an existing dir's real on-disk case, so a
-# case-insensitive filesystem can't sneak ``Benchmarks/`` past this.
+# lookalike or traversal path.
+#
+# Safety comes from the exact-match allowlist FAILING CLOSED: anything whose first resolved
+# path component isn't one of these is refused — ``Benchmarks/`` (on a case-insensitive FS),
+# ``benchmarksX/``, ``sqbyl.yaml``, a ``..`` escape, a symlink out. Note ``.resolve()`` does
+# NOT case-fold, so a variant-case *writable* target (``SEMANTICS/x.yaml``) is also refused —
+# intentionally. Do NOT "fix" that by lowercasing the allowlist: that would reopen the
+# ``Benchmarks/`` → ``benchmarks/`` bypass on case-insensitive filesystems.
 _WRITABLE_SUBDIRS = ("semantics", "examples", "trusted")
 _WRITABLE_FILES = ("instructions.md",)
 
@@ -414,7 +420,11 @@ def apply_proposal(project: Project, proposal: CoachProposal, *, force: bool = F
 
     Refuses (unless ``force``) when the target file has **drifted** from what the Coach saw —
     a stale append could otherwise land on a since-changed file. A miss on a non-empty
-    ``find`` already fails loudly; the fingerprint catches the empty-``find`` append case."""
+    ``find`` already fails loudly; the fingerprint catches the empty-``find`` append case.
+
+    Not idempotent by itself: re-applying is guarded one level up, by the persisted
+    ``applied_at`` marker in ``sqbyl coach apply`` (a second direct call here would be caught
+    by the drift check — the first write changes the file — but the CLI is the real guard)."""
     path = _resolve_target(project, proposal.target_file)
     before = path.read_text() if path.exists() else ""
     if (
