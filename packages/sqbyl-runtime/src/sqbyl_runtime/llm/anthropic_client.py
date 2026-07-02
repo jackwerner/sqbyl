@@ -16,7 +16,7 @@ import json
 import os
 from typing import Any
 
-from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, Usage
+from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, RateLimitError, Usage
 
 # Name of the synthetic tool used to coerce strict-JSON structured output.
 _STRUCTURED_TOOL = "emit_result"
@@ -81,8 +81,31 @@ class AnthropicLLMClient(LLMClient):
             ]
             kwargs["tool_choice"] = {"type": "tool", "name": _STRUCTURED_TOOL}
 
-        message = client.messages.create(**kwargs)
+        try:
+            message = client.messages.create(**kwargs)
+        except Exception as exc:  # translate the provider's 429 into the seam's signal
+            if _is_rate_limit(exc):
+                raise RateLimitError(str(exc), retry_after=_retry_after(exc)) from exc
+            raise
         return _to_response(message, structured=structured)
+
+
+def _is_rate_limit(exc: Exception) -> bool:
+    """True for an SDK 429 — matched structurally so we don't hard-import ``anthropic``."""
+    return getattr(exc, "status_code", None) == 429 or type(exc).__name__ == "RateLimitError"
+
+
+def _retry_after(exc: Exception) -> float | None:
+    """Pull the ``Retry-After`` hint (seconds) off the SDK error's response, if any."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if not headers:
+        return None
+    raw = headers.get("retry-after")
+    try:
+        return float(raw) if raw is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _to_response(message: Any, *, structured: bool) -> LLMResponse:

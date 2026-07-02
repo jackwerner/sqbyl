@@ -46,13 +46,26 @@
   .rationale { color: var(--dim); }
   .headline { font-size: .85rem; color: var(--dim); margin-bottom: .8rem; }
   .headline b { color: inherit; }
+  .meter { border: 1px solid var(--line); border-radius: 10px; padding: .7rem .9rem;
+           margin-bottom: 1rem; display: flex; align-items: baseline; gap: .6rem; }
+  .meter .big { font-size: 1.25rem; font-weight: 700; }
+  .meter .sub { color: var(--dim); font-size: .82rem; }
+  .caveat { color: var(--bad); }
+  .applied { color: var(--dim); font-size: .82rem; margin-bottom: .8rem; }
+  .qcard { border: 1px solid var(--line); border-radius: 10px; padding: .8rem 1rem;
+           margin-bottom: .6rem; }
+  .qcard.focus { border-color: var(--dim); background: #8881; }
+  .qcard .lev { color: var(--ok); font-weight: 600; }
+  .qcard .human { color: var(--bad); }
+  .kind { text-transform: uppercase; font-size: .68rem; letter-spacing: .04em; color: var(--dim); }
 </style>
 
 <header>
   <h1>sqbyl review</h1>
   <span class="counts" id="counts"></span>
   <div class="tabs">
-    <button class="tab active" id="tab-candidates">candidates</button>
+    <button class="tab active" id="tab-queue">queue</button>
+    <button class="tab" id="tab-candidates">candidates</button>
     <button class="tab" id="tab-review">judge review</button>
   </div>
 </header>
@@ -65,7 +78,13 @@
 
 <script>
 const $ = (s) => document.querySelector(s);
-let mode = "candidates";       // "candidates" | "review"
+let mode = "queue";       // "queue" | "candidates" | "review"
+
+// attention-queue state
+let cards = [];
+let cardIdx = 0;
+let readiness = null;
+let autoApplied = [];
 
 // candidate-queue state
 let queue = [];
@@ -85,9 +104,100 @@ function toast(msg) {
 
 function setMode(m) {
   mode = m;
+  $("#tab-queue").classList.toggle("active", m === "queue");
   $("#tab-candidates").classList.toggle("active", m === "candidates");
   $("#tab-review").classList.toggle("active", m === "review");
-  m === "candidates" ? load() : loadReview();
+  if (m === "queue") loadQueue();
+  else if (m === "candidates") load();
+  else loadReview();
+}
+
+// ---- attention queue (Phase 6.3) ------------------------------------------------------
+
+async function loadQueue() {
+  const data = await (await fetch("/api/queue")).json();
+  readiness = data.readiness;
+  cards = data.queue || [];
+  autoApplied = data.auto_applied || [];
+  if (cardIdx >= cards.length) cardIdx = Math.max(0, cards.length - 1);
+  renderQueue();
+}
+
+function renderQueue() {
+  $("#keys").innerHTML = `<kbd>a</kbd> accept · <kbd>A</kbd> apply all high-confidence · <kbd>↑</kbd>/<kbd>↓</kbd> move`;
+  $("#counts").textContent = "";
+  const main = $("#main");
+  if (!readiness) {
+    main.innerHTML = `<div class="empty">No eval run yet.<br>Run <code>sqbyl eval dev</code> then <code>sqbyl coach</code>.</div>`;
+    return;
+  }
+  const r = readiness;
+  const caveat = r.low_confidence
+    ? `<span class="caveat">· small eval set (n=${r.n}); ${pct(r.accuracy_low)}–${pct(r.accuracy_high)}</span>`
+    : "";
+  const meter = `<div class="meter"><span class="big">${esc(r.headline)}</span>
+    <span class="sub">${caveat}</span></div>`;
+  const auto = autoApplied.length
+    ? `<div class="applied">${autoApplied.length} high-confidence, ready to apply
+        <button id="apply-all" style="margin-left:.4rem">apply all (A)</button>
+        <span class="sub">— edits are working-tree changes; review with <code>git diff</code>, undo with <code>git checkout</code></span></div>`
+    : "";
+  if (!cards.length) {
+    main.innerHTML = meter + auto + `<div class="empty">Queue clear — nothing needs you. 🎉<br>
+      ${r.reached ? "Readiness target reached — <code>sqbyl release create</code> when ready." : "Re-run <code>sqbyl eval dev</code> to refresh."}</div>`;
+    if (autoApplied.length) $("#apply-all").onclick = applyAllHighConfidence;
+    return;
+  }
+  const list = cards.map((c, i) => {
+    // Leverage carries the same "~ projected" honesty as the meter — it's an estimate, not a
+    // measured gain. Confidence means different things per card (judge ambiguity vs the Coach's
+    // own uncalibrated self-estimate), so say which.
+    const human = c.requires_human ? `<span class="human">needs you</span>` : `<span class="lev">▸ ~+${pct(c.leverage)}</span>`;
+    const affected = c.affected_questions.length ? ` · ${c.affected_questions.length} question(s)` : "";
+    const confNote = c.kind === "judge_review" ? "judge agreement" : c.kind === "blocked" ? "" : "self-estimated, uncalibrated";
+    const conf = confNote ? `${pct(c.confidence)} confident (${confNote})` : "";
+    return `<div class="qcard ${i === cardIdx ? "focus" : ""}">
+      <div class="kind">${esc(c.kind.replace(/_/g, " "))}${conf ? " · " + conf : ""}${affected}</div>
+      <p class="q" style="font-size:1rem">${esc(c.title)} ${human}</p>
+      ${c.detail ? `<div class="rationale" style="font-size:.85rem">${esc(c.detail)}</div>` : ""}
+      ${c.suggestion ? `<pre style="margin-top:.5rem">${esc(c.suggestion)}</pre>` : ""}
+      <div style="margin-top:.6rem"><button data-i="${i}" class="acc">accept${c.requires_human ? " (confirm)" : ""}</button></div>
+    </div>`;
+  }).join("");
+  main.innerHTML = meter + auto + list;
+  if (autoApplied.length) $("#apply-all").onclick = applyAllHighConfidence;
+  main.querySelectorAll("button.acc").forEach((b) => {
+    b.onclick = () => acceptDecision(cards[Number(b.dataset.i)]);
+  });
+}
+
+async function applyAllHighConfidence() {
+  // The §5.5 "A" affordance: apply every high-confidence card in one click (each is undoable
+  // via git). Applying happens here on an explicit action, never silently on load.
+  const pending = [...autoApplied];
+  let ok = 0, failed = 0, last = null;
+  for (const c of pending) {
+    last = await post(`/api/queue/${encodeURIComponent(c.id)}/accept`, {});
+    last.ok === false ? failed++ : ok++;
+  }
+  if (last) { readiness = last.readiness; cards = last.queue || []; autoApplied = last.auto_applied || []; }
+  toast(failed ? `applied ${ok}, ${failed} failed` : `applied ${ok} high-confidence`);
+  renderQueue();
+}
+
+async function acceptDecision(card) {
+  if (!card) return;
+  const res = await post(`/api/queue/${encodeURIComponent(card.id)}/accept`, {});
+  if (res.ok === false) { toast(`✗ ${res.detail || "could not apply"}`); }
+  // Name the file written + how to undo it — an applied edit is a working-tree change.
+  else if (res.changed) { toast(`applied → ${res.changed} · undo: git checkout ${res.changed}`); }
+  else { toast(`accepted — ${card.title}`); }
+  // Re-render from the fresh payload the server returned, so the meter moves live.
+  readiness = res.readiness;
+  cards = res.queue || [];
+  autoApplied = res.auto_applied || [];
+  if (cardIdx >= cards.length) cardIdx = Math.max(0, cards.length - 1);
+  renderQueue();
 }
 
 // ---- candidate queue (Phase 4) --------------------------------------------------------
@@ -292,11 +402,21 @@ async function post(url, body) {
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const fmt = (v) => v === null ? "∅" : v;
 
+$("#tab-queue").onclick = () => setMode("queue");
 $("#tab-candidates").onclick = () => setMode("candidates");
 $("#tab-review").onclick = () => setMode("review");
 
 document.addEventListener("keydown", (e) => {
   const inField = ["TEXTAREA", "INPUT"].includes(e.target.tagName);
+  if (mode === "queue") {
+    if (inField) return;
+    if (e.key === "A") { e.preventDefault(); if (autoApplied.length) applyAllHighConfidence(); return; }
+    if (!cards.length) return;
+    if (e.key === "a") { e.preventDefault(); acceptDecision(cards[cardIdx]); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); cardIdx = Math.min(cards.length - 1, cardIdx + 1); renderQueue(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); cardIdx = Math.max(0, cardIdx - 1); renderQueue(); }
+    return;
+  }
   if (mode === "review") {
     if (inField || !reviewRows.length) return;
     if (e.key === "g") { e.preventDefault(); $("#rv-agree").click(); }
@@ -319,5 +439,5 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "r") { e.preventDefault(); reject(); }
 });
 
-load();
+setMode("queue");
 </script>

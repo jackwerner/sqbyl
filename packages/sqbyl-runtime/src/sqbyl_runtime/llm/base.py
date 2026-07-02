@@ -22,6 +22,30 @@ Role = Literal["user", "assistant"]
 T = TypeVar("T", bound=BaseModel)
 
 
+class RateLimitError(Exception):
+    """A 429 / rate-limit signal from the provider (spec §3 #8).
+
+    The seam raises this (the real client translates the provider's 429) so callers can
+    tell "slow down, retry" apart from a genuine failure. The orchestrator retries on it
+    with backoff instead of degrading the unit to a failed card; every *other* exception
+    is a real failure. ``retry_after`` carries the provider's ``Retry-After`` hint (seconds)
+    when present, so backoff can honor server guidance instead of guessing. ``usage`` carries
+    any tokens the rejected call still billed (usually zero — a 429 rejects before
+    completion) so the orchestrator can meter it rather than silently drop it (invariant 5).
+    """
+
+    def __init__(
+        self,
+        message: str = "",
+        *,
+        retry_after: float | None = None,
+        usage: Usage | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+        self.usage = usage
+
+
 class Message(BaseModel):
     """A single conversation turn. ``system`` is passed separately to ``complete``."""
 

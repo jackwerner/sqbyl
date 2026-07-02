@@ -13,7 +13,6 @@ These are dev-only models: benchmarks and their scored runs never ship in a rele
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 from enum import StrEnum
 
@@ -217,14 +216,9 @@ class ScoredRun(SqbylModel):
         often within run-to-run noise; the interval keeps a headline percentage honest
         about how much it can be trusted (spec §7.5). Returns ``(0, 0)`` for an empty run.
         """
-        n = self.total
-        if n == 0:
-            return (0.0, 0.0)
-        p = self.accuracy
-        denom = 1.0 + z * z / n
-        center = (p + z * z / (2 * n)) / denom
-        margin = z * math.sqrt((p * (1 - p) + z * z / (4 * n)) / n) / denom
-        return (max(0.0, center - margin), min(1.0, center + margin))
+        from sqbyl.stats import wilson_interval
+
+        return wilson_interval(self.n_correct, self.total, z=z)
 
     @property
     def manual_review_rate(self) -> float:

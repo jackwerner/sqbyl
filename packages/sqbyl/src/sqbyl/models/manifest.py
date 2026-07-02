@@ -72,6 +72,22 @@ class DefaultsConfig(SqbylModel):
     max_tables_warn: int = Field(default=7, ge=1, description="'Small space' nudge threshold.")
     self_repair_attempts: int = Field(default=2, ge=0)
     prompt_caching: bool = True
+    readiness_target: float = Field(
+        default=0.95,
+        ge=0.0,
+        le=1.0,
+        description="Accuracy the readiness meter counts down to — 'shippable' (spec §5.5).",
+    )
+    auto_apply_threshold: float = Field(
+        default=0.85,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Machine decisions at/above this confidence are applied without asking, with "
+            "one-click undo (spec §5.5). An unvalidated heuristic — set to 1.0 to require a "
+            "human on everything until it's calibrated against accept/reject rates."
+        ),
+    )
 
 
 class SqbylManifest(SqbylModel):

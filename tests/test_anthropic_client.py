@@ -14,6 +14,7 @@ import pytest
 
 from sqbyl_runtime.llm import LLMRequest, Message
 from sqbyl_runtime.llm.anthropic_client import AnthropicLLMClient
+from sqbyl_runtime.llm.base import RateLimitError
 
 
 class FakeMessages:
@@ -23,12 +24,23 @@ class FakeMessages:
 
     def create(self, **kwargs: Any) -> Any:
         self.last_kwargs = kwargs
+        if isinstance(self._reply, Exception):
+            raise self._reply
         return self._reply
 
 
 class FakeSDK:
     def __init__(self, reply: Any) -> None:
         self.messages = FakeMessages(reply)
+
+
+def _sdk_429(*, retry_after: str | None = "3", name: str = "RateLimitError") -> Exception:
+    """An SDK-shaped 429: status_code + a response carrying a Retry-After header."""
+    headers = {"retry-after": retry_after} if retry_after is not None else {}
+    exc = type(name, (Exception,), {})("rate limited")
+    exc.status_code = 429  # type: ignore[attr-defined]
+    exc.response = SimpleNamespace(headers=headers)  # type: ignore[attr-defined]
+    return exc
 
 
 def _text_message() -> Any:
@@ -109,6 +121,35 @@ def test_structured_output_forces_the_tool() -> None:
     assert kwargs["tool_choice"] == {"type": "tool", "name": "emit_result"}
     assert kwargs["tools"][0]["name"] == "emit_result"
     assert resp.structured == {"plan": "p", "sql": "SELECT 1"}
+
+
+def test_429_is_translated_to_ratelimiterror_with_retry_after() -> None:
+    sdk = FakeSDK(_sdk_429(retry_after="3"))
+    client = AnthropicLLMClient(client=sdk)
+    with pytest.raises(RateLimitError) as exc_info:
+        client.complete(
+            LLMRequest(model="claude-opus-4-8", messages=[Message(role="user", content="hi")])
+        )
+    assert exc_info.value.retry_after == 3.0
+
+
+def test_429_matched_structurally_without_status_code() -> None:
+    # An SDK error identified only by class name (no status_code) still translates.
+    exc = type("RateLimitError", (Exception,), {})("rl")
+    client = AnthropicLLMClient(client=FakeSDK(exc))
+    with pytest.raises(RateLimitError):
+        client.complete(
+            LLMRequest(model="claude-opus-4-8", messages=[Message(role="user", content="hi")])
+        )
+
+
+def test_non_429_error_propagates_unchanged() -> None:
+    boom = ValueError("bad request")
+    client = AnthropicLLMClient(client=FakeSDK(boom))
+    with pytest.raises(ValueError, match="bad request"):
+        client.complete(
+            LLMRequest(model="claude-opus-4-8", messages=[Message(role="user", content="hi")])
+        )
 
 
 def test_missing_key_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
