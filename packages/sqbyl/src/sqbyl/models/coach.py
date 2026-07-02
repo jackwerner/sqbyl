@@ -49,20 +49,34 @@ LAYER_PREFERENCE: tuple[CoachLayer, ...] = (
 PROSE_LAYERS: frozenset[CoachLayer] = frozenset({CoachLayer.instruction})
 
 
-class CoachProposal(SqbylModel):
-    """One applyable improvement — a file diff with its reasoning (spec §8).
+class CoachEdit(SqbylModel):
+    """One find/replace edit to one file — the reliably-applyable unit (spec §8, plan 5.4).
 
-    ``diff`` is a unified diff against ``target_file`` (relative to the project root), so it
-    displays as a diff and applies as one (Phase 5.4). ``predicted_fixes`` is how many of the
-    addressed ``question_ids`` the Coach expects to flip green, and ``confidence`` how sure it
-    is — together the leverage signal that ranks the list."""
+    ``find`` is text copied **verbatim** from the current file that uniquely locates the
+    change; ``replace`` is what it becomes. An empty ``find`` **appends** ``replace`` to the
+    file (creating it if it doesn't exist yet) — how a new measure, example, or asset is
+    added. Search/replace (not a line-numbered patch) so application is exact and testable:
+    the anchor either matches once or the edit is refused, never applied fuzzily."""
+
+    find: str = ""
+    replace: str
+
+
+class CoachProposal(SqbylModel):
+    """One applyable improvement — a set of file edits with its reasoning (spec §8).
+
+    The edits target one ``target_file`` (relative to the project root). They are structured
+    find/replace pairs, not a free-text patch, so ``sqbyl coach apply`` applies them exactly;
+    :meth:`render_diff` derives a human-readable diff *from the edits*, so what a reviewer
+    sees is exactly what will be written. ``predicted_fixes`` is how many of the addressed
+    ``question_ids`` the Coach expects to flip green, and ``confidence`` how sure it is."""
 
     id: str
     title: str
     root_cause: str
     layer: CoachLayer
     target_file: str
-    diff: str
+    edits: list[CoachEdit] = Field(default_factory=list)
     rationale: str = ""
     predicted_fixes: int = Field(default=0, ge=0)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
@@ -70,6 +84,24 @@ class CoachProposal(SqbylModel):
     # The Coach flags conflicts an edit may introduce (e.g. a global instruction that could
     # contradict existing prose), so a reviewer sees the risk before applying (spec §8).
     conflicts: str = ""
+    # A fingerprint of ``target_file``'s content when the Coach saw it, so `coach apply` can
+    # refuse a stale edit whose file has since drifted (empty ⇒ the file didn't exist yet).
+    target_fingerprint: str = ""
+    # Stamped by `coach apply` once written, so a re-apply is caught (an empty-`find` append
+    # would otherwise silently duplicate the edit) and the audit trail records what was applied.
+    applied_at: datetime | None = None
+
+    def render_diff(self) -> str:
+        """A human-readable diff derived from the edits (display only — apply uses the edits).
+
+        Deriving it from the edits guarantees the shown diff equals what gets written."""
+        lines: list[str] = []
+        for e in self.edits:
+            for line in e.find.splitlines():
+                lines.append(f"- {line}")
+            for line in e.replace.splitlines():
+                lines.append(f"+ {line}")
+        return "\n".join(lines)
 
     @property
     def is_prose(self) -> bool:

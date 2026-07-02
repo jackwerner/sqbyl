@@ -18,6 +18,7 @@ from sqbyl.models.candidates import (
 from sqbyl.models.coach import (
     LAYER_PREFERENCE,
     PROSE_LAYERS,
+    CoachEdit,
     CoachLayer,
     CoachProposal,
     CoachReport,
@@ -76,6 +77,7 @@ __all__ = [
     "CalibrationRecord",
     "Candidate",
     "CandidateStatus",
+    "CoachEdit",
     "CoachLayer",
     "CoachProposal",
     "CoachReport",

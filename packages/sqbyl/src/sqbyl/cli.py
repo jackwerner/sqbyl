@@ -190,7 +190,13 @@ def _eval(args: list[str]) -> int:
 
     from sqbyl.eval.benchmarks_io import Split
     from sqbyl.eval.heldout import load_for_eval
-    from sqbyl.eval.report import diff_runs, load_runs, previous_run
+    from sqbyl.eval.report import (
+        diff_runs,
+        latest_run,
+        load_runs,
+        overfitting_signal,
+        previous_run,
+    )
     from sqbyl.models import Verdict
     from sqbyl.project import Project
     from sqbyl_runtime.cost import estimate_cost
@@ -298,6 +304,23 @@ def _eval(args: list[str]) -> int:
                 print(f"  regressed: {', '.join(d.regressed)}")
         else:
             print(f"\nvs previous {split.value} run ({prev.run_id[:8]}): no questions flipped")
+
+    # The dev↔test overfitting signal (spec §7): when the honest held-out set is scored, put
+    # its accuracy next to the latest dev run and warn if the loop has tuned to dev rather than
+    # generalized. This is the backstop that keeps `coach apply` from quietly training on dev.
+    if split is Split.test:
+        dev_run = latest_run(paths, split=Split.dev.value)
+        if dev_run is not None:
+            sig = overfitting_signal(dev_run, run)
+            print(
+                f"\ndev↔test gap: dev {sig.dev_accuracy:.1%} vs test {sig.test_accuracy:.1%} "
+                f"(gap {sig.gap:+.1%}, threshold {sig.threshold:.0%})"
+            )
+            if sig.overfit:
+                print(
+                    "  ⚠ overfitting: dev is well above held-out test — the improvement loop "
+                    "has tuned to the dev set. Trust the test number, and diversify dev."
+                )
     return 0
 
 
@@ -393,8 +416,10 @@ def _coach(args: list[str]) -> int:
     The headline loop (spec §8): read the latest **dev** eval run's failures and propose a
     ranked list of applyable file diffs — the minimal, highest-leverage edit at the right
     layer (examples > semantics > prose). One paid call; proposals are saved so
-    ``sqbyl coach apply N`` (Phase 5.4) can write them. The Coach never sees ``test.yaml``.
+    ``sqbyl coach apply N`` can write them. The Coach never sees ``test.yaml``.
     """
+    if args and args[0] == "apply":
+        return _coach_apply(args[1:])
     from sqbyl.coach import coach, save_report
     from sqbyl.eval.report import latest_run
     from sqbyl.llm import build_llm_client
@@ -473,7 +498,7 @@ def _coach(args: list[str]) -> int:
         )
         if p.conflicts:
             print(f"    ⚠ conflict: {p.conflicts}")
-        for line in p.diff.splitlines():
+        for line in p.render_diff().splitlines():
             print(f"    {line}")
         print()
     print(
@@ -481,9 +506,70 @@ def _coach(args: list[str]) -> int:
         "held-out test set.\n"
         "  A rising dev with a flat test is overfitting — after `coach apply`, run "
         "`sqbyl eval test` and watch the dev↔test gap.\n"
-        "apply with: sqbyl coach apply N [...]  (Phase 5.4)"
+        "apply with: sqbyl coach apply N [M ...]"
     )
     return 0
+
+
+def _coach_apply(args: list[str]) -> int:
+    """`sqbyl coach apply N [M ...] [DIR]` — write chosen proposals from the latest report.
+
+    Applies the picked proposals' find/replace edits to the project files ($0, no LLM). The
+    result is an ordinary working-tree change: review with ``git diff``, undo with
+    ``git checkout``/``git revert``. Then re-run ``eval dev`` to see the targeted questions
+    flip, and ``eval test`` to check the held-out number actually moved."""
+    from datetime import UTC, datetime
+
+    from sqbyl.coach import ApplyError, apply_proposal, latest_report, save_report
+    from sqbyl.project import Project
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    force = "--force" in args
+    indices = [int(a) for a in args if a.isdigit()]
+    positional = [a for a in args if not a.startswith("-") and not a.isdigit()]
+    project = Project.load(positional[0] if positional else ".")
+    paths = SqbylPaths(project.root)
+    report = latest_report(paths)
+    if report is None:
+        print("no coach report yet — run `sqbyl coach` first")
+        return 1
+    if not indices:
+        print("usage: sqbyl coach apply N [M ...]  (proposal numbers from `sqbyl coach`)")
+        return 2
+
+    applied, changed, failed = 0, set(), 0
+    for n in indices:
+        if not 1 <= n <= report.n_proposals:
+            print(f"  ✗ no proposal [{n}] (report has {report.n_proposals})")
+            failed += 1
+            continue
+        proposal = report.proposals[n - 1]
+        # Refuse a re-apply (an empty-`find` append would silently duplicate the edit); the
+        # record of what was applied lives on the persisted report.
+        if proposal.applied_at is not None and not force:
+            print(f"  · [{n}] {proposal.title}: already applied — skipping (--force to re-apply)")
+            continue
+        try:
+            path = apply_proposal(project, proposal, force=force)
+        except ApplyError as exc:
+            print(f"  ✗ [{n}] {proposal.title}: {exc}")
+            failed += 1
+            continue
+        proposal.applied_at = datetime.now(UTC)  # stamp the audit trail (persisted below)
+        rel = path.relative_to(project.root.resolve())
+        print(f"  ✓ [{n}] {proposal.title} → {rel}")
+        changed.add(str(rel))
+        applied += 1
+
+    if applied:
+        save_report(paths, report)  # persist the applied markers back onto the report
+        print(
+            f"\napplied {applied} proposal(s) to {len(changed)} file(s). Review with "
+            "`git diff`; undo with `git checkout -- <file>`.\n"
+            "Then: `sqbyl eval dev` (see the targeted questions flip) → `sqbyl eval test` "
+            "(confirm the held-out number moved, not just dev)."
+        )
+    return 1 if failed and not applied else 0
 
 
 def _review(args: list[str]) -> int:
