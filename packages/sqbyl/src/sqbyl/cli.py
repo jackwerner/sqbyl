@@ -190,7 +190,14 @@ def _eval(args: list[str]) -> int:
 
     from sqbyl.eval.benchmarks_io import Split
     from sqbyl.eval.heldout import load_for_eval
-    from sqbyl.eval.report import diff_runs, load_runs, previous_run
+    from sqbyl.eval.report import (
+        diff_runs,
+        latest_run,
+        load_runs,
+        overfitting_signal,
+        previous_run,
+    )
+    from sqbyl.models import Verdict
     from sqbyl.project import Project
     from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.state.layout import SqbylPaths
@@ -233,27 +240,58 @@ def _eval(args: list[str]) -> int:
     est = estimate_cost(
         model=model, calls=len(questions), avg_input_tokens=1500, avg_output_tokens=300
     )
+    judging = project.manifest.automation.auto_judge
+    judge_note = (
+        " (agent only; judging adds up to 3 calls per review-pile row — plus a small few-shot "
+        "preamble once the judge is calibrated — all metered live)"
+        if judging
+        else ""
+    )
     print(
         f"▸ eval {split.value} — {len(questions)} question(s) on {model}, "
-        f"estimated ~${est:.4f} (paid)"
+        f"estimated ~${est:.4f} (paid){judge_note}"
     )
 
     run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
 
+    # Headline accuracy is DETERMINISTIC only — the truth users report upstream. The judge
+    # is advisory and never moves this number (see spec §7 / the review pile below).
     lo, hi = run.accuracy_ci()
     print(
-        f"\naccuracy: {run.n_correct}/{run.total} ({run.accuracy:.1%}"
+        f"\naccuracy (deterministic): {run.n_correct}/{run.total} ({run.accuracy:.1%}"
         f", 95% CI {lo:.0%}–{hi:.0%})"
-        f" · manual review: {run.n_manual_review} · errors: {run.n_error}"
+        f" · needs review: {run.n_manual_review} · errors: {run.n_error}"
     )
+    if run.n_manual_review:
+        # Advisory triage: how the judge thinks the review pile splits (never scored).
+        likely_ok = run.n_suggested(Verdict.correct)
+        likely_wrong = run.n_suggested(Verdict.incorrect)
+        ambiguous = run.n_suggested(Verdict.manual_review)
+        print(
+            f"  review pile — judge suggests: {likely_ok} likely-equivalent, "
+            f"{likely_wrong} likely-wrong, {ambiguous} ambiguous (all await a human)"
+        )
     print(
         f"self-repair: {run.self_repair_rate:.1%} · mean latency: {run.mean_latency_ms:.0f}ms"
         f" · {run.total_tokens} tokens · ${run.total_cost_usd:.4f}"
     )
     print("models: " + ", ".join(f"{role}={m}" for role, m in sorted(run.models.items())))
+    if run.models.get("judge") and run.models.get("judge") == run.models.get("agent"):
+        print(
+            "  ⚠ judge model == agent model — suggestions share the agent's blind spots; "
+            "pin a different judge model in sqbyl.yaml for independence."
+        )
+    marks = {"correct": "✓", "manual_review": "?", "error": "✗"}
+    hint = {
+        "correct": "likely-equivalent",
+        "incorrect": "likely-wrong",
+        "manual_review": "ambiguous",
+    }
     for r in run.results:
-        mark = {"correct": "✓", "manual_review": "?", "error": "✗"}[r.verdict.value]
-        print(f"  {mark} {r.id}  [{r.verdict.value}]")
+        v = r.verdict.value
+        # For a review-pile row, show the advisory judge hint (not a score).
+        suggestion = f"  → judge: {hint[r.judge_suggestion.value]}" if r.judge_suggestion else ""
+        print(f"  {marks[v]} {r.id}  [{v}]{suggestion}")
 
     prev = previous_run(paths, run)
     if prev is not None:
@@ -266,6 +304,23 @@ def _eval(args: list[str]) -> int:
                 print(f"  regressed: {', '.join(d.regressed)}")
         else:
             print(f"\nvs previous {split.value} run ({prev.run_id[:8]}): no questions flipped")
+
+    # The dev↔test overfitting signal (spec §7): when the honest held-out set is scored, put
+    # its accuracy next to the latest dev run and warn if the loop has tuned to dev rather than
+    # generalized. This is the backstop that keeps `coach apply` from quietly training on dev.
+    if split is Split.test:
+        dev_run = latest_run(paths, split=Split.dev.value)
+        if dev_run is not None:
+            sig = overfitting_signal(dev_run, run)
+            print(
+                f"\ndev↔test gap: dev {sig.dev_accuracy:.1%} vs test {sig.test_accuracy:.1%} "
+                f"(gap {sig.gap:+.1%}, threshold {sig.threshold:.0%})"
+            )
+            if sig.overfit:
+                print(
+                    "  ⚠ overfitting: dev is well above held-out test — the improvement loop "
+                    "has tuned to the dev set. Trust the test number, and diversify dev."
+                )
     return 0
 
 
@@ -353,6 +408,168 @@ def _synth(args: list[str]) -> int:
     queue_name = candidates_path(project).name
     print(f"\n{result.n_survivors} candidate(s) queued → run `sqbyl review` ({queue_name})")
     return 0
+
+
+def _coach(args: list[str]) -> int:
+    """`sqbyl coach [DIR] [--budget $N] [--replay P] [--record P] [--model M]`.
+
+    The headline loop (spec §8): read the latest **dev** eval run's failures and propose a
+    ranked list of applyable file diffs — the minimal, highest-leverage edit at the right
+    layer (examples > semantics > prose). One paid call; proposals are saved so
+    ``sqbyl coach apply N`` can write them. The Coach never sees ``test.yaml``.
+    """
+    if args and args[0] == "apply":
+        return _coach_apply(args[1:])
+    from sqbyl.coach import coach, save_report
+    from sqbyl.eval.report import latest_run
+    from sqbyl.llm import build_llm_client
+    from sqbyl.project import Project
+    from sqbyl_runtime.cost import estimate_cost
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
+
+    replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
+    budget_opt = _opt(args, "budget")
+    consumed = {replay, record, model_opt, budget_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    model = model_opt or project.manifest.model.for_role("coach")
+    budget = float(budget_opt) if budget_opt is not None else None
+
+    paths = SqbylPaths(project.root)
+    run = latest_run(paths, split="dev")
+    if run is None:
+        print("no dev run yet — run `sqbyl eval dev` first, then coach its failures")
+        return 1
+    from sqbyl.coach import gather_failures
+
+    failures = gather_failures(run)
+    if not failures:
+        print(f"dev run {run.run_id[:8]} is clean ({run.n_correct}/{run.total}) — nothing to coach")
+        return 0
+
+    est = estimate_cost(model=model, calls=1, avg_input_tokens=4000, avg_output_tokens=2000)
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    print(
+        f"▸ coach {len(failures)} dev failure(s) from run {run.run_id[:8]} on {model} — "
+        f"estimated ~${est:.4f} (paid){cap}"
+    )
+    if budget is not None and est > budget:
+        print(f"  ✗ estimate ~${est:.4f} exceeds budget ${budget:.2f} — raise --budget")
+        return 1
+
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    report = coach(
+        project,
+        run,
+        llm=llm,
+        model=model,
+        trace_writer=TraceWriter(paths.ensure().traces_dir / "coach.jsonl"),
+    )
+    spent = _meter(
+        project, report.usage, model=model, command="coach", role="coach", run_id=new_trace_id()
+    )
+    save_report(paths, report)
+
+    # How much of the target set is trustworthy: an unresolved mismatch may be a false
+    # failure (the agent's SQL could be equivalent), so surface it rather than implying every
+    # coached row is a real bug (spec §7 — a mismatch is not proof of incorrectness).
+    unresolved = sum(1 for r in failures if r.needs_review and r.human_verdict is None)
+    noise = f" · {unresolved} unresolved mismatch(es) — may be false failures" if unresolved else ""
+    print(
+        f"\nsqbyl Coach — {report.n_failures} failing{noise} · {report.n_proposals} proposal(s) · "
+        f"predicts ~{report.total_predicted_fixes} fix(es) (model estimate, unverified) · "
+        f"${spent:.4f}\n"
+    )
+    for i, p in enumerate(report.proposals, start=1):
+        flag = (
+            "  ⚠ global prose — last resort"
+            if p.is_prose
+            else "  ⚠ single-question example — memorization risk"
+            if p.memorization_risk
+            else ""
+        )
+        print(f"[{i}] {p.title}   → {p.target_file}{flag}")
+        # predicted_fixes / confidence are the model's OWN unvalidated guesses (ml-systems):
+        # label them as such, not as a measured, calibrated leverage score.
+        print(
+            f"    predicts ~{p.predicted_fixes} fix(es) · confidence {p.confidence:.0%} "
+            f"(self-reported, unverified) · root cause: {p.root_cause}"
+        )
+        if p.conflicts:
+            print(f"    ⚠ conflict: {p.conflicts}")
+        for line in p.render_diff().splitlines():
+            print(f"    {line}")
+        print()
+    print(
+        "⚠ These edits raise the DEV score, which is UNVALIDATED until you re-score the "
+        "held-out test set.\n"
+        "  A rising dev with a flat test is overfitting — after `coach apply`, run "
+        "`sqbyl eval test` and watch the dev↔test gap.\n"
+        "apply with: sqbyl coach apply N [M ...]"
+    )
+    return 0
+
+
+def _coach_apply(args: list[str]) -> int:
+    """`sqbyl coach apply N [M ...] [DIR]` — write chosen proposals from the latest report.
+
+    Applies the picked proposals' find/replace edits to the project files ($0, no LLM). The
+    result is an ordinary working-tree change: review with ``git diff``, undo with
+    ``git checkout``/``git revert``. Then re-run ``eval dev`` to see the targeted questions
+    flip, and ``eval test`` to check the held-out number actually moved."""
+    from datetime import UTC, datetime
+
+    from sqbyl.coach import ApplyError, apply_proposal, latest_report, save_report
+    from sqbyl.project import Project
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    force = "--force" in args
+    indices = [int(a) for a in args if a.isdigit()]
+    positional = [a for a in args if not a.startswith("-") and not a.isdigit()]
+    project = Project.load(positional[0] if positional else ".")
+    paths = SqbylPaths(project.root)
+    report = latest_report(paths)
+    if report is None:
+        print("no coach report yet — run `sqbyl coach` first")
+        return 1
+    if not indices:
+        print("usage: sqbyl coach apply N [M ...]  (proposal numbers from `sqbyl coach`)")
+        return 2
+
+    applied, changed, failed = 0, set(), 0
+    for n in indices:
+        if not 1 <= n <= report.n_proposals:
+            print(f"  ✗ no proposal [{n}] (report has {report.n_proposals})")
+            failed += 1
+            continue
+        proposal = report.proposals[n - 1]
+        # Refuse a re-apply (an empty-`find` append would silently duplicate the edit); the
+        # record of what was applied lives on the persisted report.
+        if proposal.applied_at is not None and not force:
+            print(f"  · [{n}] {proposal.title}: already applied — skipping (--force to re-apply)")
+            continue
+        try:
+            path = apply_proposal(project, proposal, force=force)
+        except ApplyError as exc:
+            print(f"  ✗ [{n}] {proposal.title}: {exc}")
+            failed += 1
+            continue
+        proposal.applied_at = datetime.now(UTC)  # stamp the audit trail (persisted below)
+        rel = path.relative_to(project.root.resolve())
+        print(f"  ✓ [{n}] {proposal.title} → {rel}")
+        changed.add(str(rel))
+        applied += 1
+
+    if applied:
+        save_report(paths, report)  # persist the applied markers back onto the report
+        print(
+            f"\napplied {applied} proposal(s) to {len(changed)} file(s). Review with "
+            "`git diff`; undo with `git checkout -- <file>`.\n"
+            "Then: `sqbyl eval dev` (see the targeted questions flip) → `sqbyl eval test` "
+            "(confirm the held-out number moved, not just dev)."
+        )
+    return 1 if failed and not applied else 0
 
 
 def _review(args: list[str]) -> int:
@@ -471,8 +688,10 @@ def main(argv: list[str] | None = None) -> int:
         return _synth(args[1:])
     if args and args[0] == "review":
         return _review(args[1:])
+    if args and args[0] == "coach":
+        return _coach(args[1:])
     print(
-        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, "
+        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, coach, "
         "schema export, version"
     )
     return 0

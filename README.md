@@ -12,14 +12,37 @@ Bring your own database. Bring one Anthropic API key. sqbyl uses Claude to both 
 
 If you want a trustworthy natural-language-to-SQL surface over a plain Postgres/DuckDB/Snowflake warehouse, your options are roughly: pay for a closed platform that locks the semantic layer, the judges, and the optimizer inside a walled garden — or wire up a library yourself and hand-author all the metadata, evals, and prompt tuning.
 
-sqbyl is the middle path. It reproduces the **build → evaluate → get told how to improve → re-evaluate** loop as plain files in a git repo:
+sqbyl is the middle path. It reproduces the **build → evaluate → get told how to improve → re-evaluate** loop as plain files in a git repo — and it's built so the accuracy number that loop produces is one you can actually **report to stakeholders and defend**:
 
 - **No black box.** Every prompt, judge, and improvement proposal is readable, editable plain text/JSON.
 - **No second vendor.** One Anthropic key powers the agent, the judges, and the Coach. Context selection is LLM/lexical, so there's no embeddings provider or vector store to run.
 - **No surprise bill.** The free, deterministic work (connect, profile, infer joins) runs first at $0. Paid work is estimated up front, metered live, and capped by `--budget`.
 - **Versioned like code.** Your whole "agent" is a directory of YAML you diff, review, and `git revert`.
+- **Defensible by design.** The headline accuracy is deterministic and measured on a *held-out* set the improvement loop can never touch — so "we hit 94%" is a claim that survives scrutiny, not a benchmark you overfit. ([more below](#built-for-defensible-ml-systems))
 
 sqbyl deliberately does **not** reimplement governance, RBAC, or catalog management — that's your database's job. See [non-goals](sqbyl-design-spec.md#non-goals).
+
+---
+
+## Built for defensible ML systems
+
+A natural-language-to-SQL surface is only as good as the accuracy number you can put in front of stakeholders and stand behind. sqbyl is designed end-to-end around the ML-systems principles that keep that number honest — the same discipline you'd want before deploying any evaluated agent at scale:
+
+- **Deterministic-first measurement.** The headline accuracy is *result-set correctness* — execute the gold SQL and the generated SQL, compare the rows. No LLM sits inside the number, so it's reproducible and can't drift with a prompt. LLM judges are strictly **advisory**: they triage the ambiguous pile and explain *why* a row is suspect, but they never move the reported accuracy. Only a human override is authoritative.
+
+- **Real train/test discipline.** `benchmarks/test.yaml` is a **sealed held-out set**. The dev loop — synth, coach, optimizer — can never read it; that's enforced as a *code boundary* (an import-linter rule in CI), not a convention you have to remember. Even judge calibration is split-scoped, so dev feedback can't leak into the test judge. **The headline number is always the held-out one**, with the dev score shown beside it so the gap is visible.
+
+- **Goodhart-resistance by construction.** The Coach optimizes context against the dev set — but it *structurally cannot* move the deterministic accuracy number, it's steered away from memorizing benchmark answers (fix the semantics, not the prompt), and it warns you that dev gains are **unvalidated until a held-out re-score**. Optimizing and measuring on the same set is training on the test set; sqbyl makes that mistake hard to commit.
+
+- **Calibrated, honest uncertainty.** A small eval set is noise-prone, so accuracy carries a **Wilson confidence interval** — a 1–2 question flip on 30 questions isn't dressed up as a trend. A live **judge↔human agreement** score tells you exactly how far to trust the judge, and it's labeled as *selection-biased* rather than overclaimed. The model's own self-reported confidence is labeled **"unverified"** — never presented as calibrated.
+
+- **Reproducibility and provenance.** Every scored run is stamped with the **model version per role** and the calibration state that shaped it. A score is never divorced from what produced it — the release scorecard records the exact models the number was earned on, and the runtime warns on model or schema mismatch at load.
+
+- **Human-in-the-loop, everywhere.** One unifying pattern runs through the judge, the benchmark synthesis, and the Coach: **the LLM proposes, the human disposes, and the correction improves the system.** Every judge verdict, synthesized question, and fix is a reviewable proposal, not a fait accompli.
+
+- **Cost honesty.** Free, deterministic work runs first at **$0** (connect, profile, infer joins). Paid work is estimated before, metered live, and capped by `--budget`. The economics of the agent are as legible as its accuracy.
+
+The short version: **sqbyl helps you ship a text-to-SQL agent whose accuracy you can actually report** — because the number is deterministic, held out, provenance-stamped, and defended against the ways evaluation loops quietly lie to you.
 
 ---
 

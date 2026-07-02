@@ -75,7 +75,9 @@ def test_runner_routes_a_wrong_answer_to_manual_review(dogfood_dir: Path) -> Non
     replies[0] = structured_reply(
         {"plan": "wrong", "sql": "SELECT COUNT(*) + 1 FROM analytics.orders", "used_assets": []}
     )
-    run = run_eval(project, split=Split.dev, llm=MockLLMClient(replies))
+    # judge=False isolates Layer 1: this test asserts the *deterministic* routing of a
+    # mismatch to manual_review. Layer-2 adjudication of that row is covered in test_judges.
+    run = run_eval(project, split=Split.dev, llm=MockLLMClient(replies), judge=False)
 
     first = run.results[0]
     assert first.verdict is Verdict.manual_review  # mismatch is never asserted "incorrect"

@@ -1,0 +1,151 @@
+{
+  "entries": {
+    "1d1750acc98aafe005822914c1d9551f7f05df9a4c9f231af8de422ded2942c5": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 8192,
+        "messages": [
+          {
+            "content": "SQL dialect: duckdb\n\nFAILING DEV QUESTIONS (1):\n- id: q_net_revenue_all\n  question: What is total net revenue?\n  verdict: manual_review\n  status: UNRESOLVED mismatch \u2014 a different result set is not proof of error; the agent's SQL may be equivalent. Only edit context if it is genuinely the agent's fault\n  agent_plan: sum all amounts\n  generated_sql: SELECT SUM(amount_cents)/100.0 FROM analytics.orders\n  gold_sql: SELECT SUM(amount_cents)/100.0 FROM analytics.orders WHERE status='confirmed'\n\nCURRENT PROJECT FILES:\n===== semantics/customers.yaml =====\ntable: analytics.customers\ndescription: One row per customer.\nsynonyms: [accounts, users]\ncolumns:\n  - name: customer_id\n    type: bigint\n    description: Primary key.\n    profile: { nulls: 0.0, distinct: 200, min: 1, max: 200 }\n  - name: name\n    type: text\n    description: Customer display name.\n    profile: { nulls: 0.0, distinct: 200 }\n  - name: email\n    type: text\n    description: Contact email.\n    profile: { nulls: 0.0, distinct: 200 }\n  - name: region\n    type: text\n    description: Sales region.\n    profile: { nulls: 0.0, distinct: 4 }\n    sample_values: [us, emea, apac, latam]\n  - name: plan\n    type: text\n    description: Subscription tier.\n    profile: { nulls: 0.0, distinct: 3 }\n    sample_values: [free, pro, enterprise]\n  - name: signup_date\n    type: date\n    description: Date the customer signed up.\n    profile: { nulls: 0.0, min: \"2018-06-01\", max: \"2025-05-31\" }\njoins:\n  - to: analytics.orders\n    type: one_to_many\n    on: \"customers.customer_id = orders.customer_id\"\n\n===== semantics/orders.yaml =====\ntable: analytics.orders\ndescription: One row per confirmed order. Excludes carts and draft orders.\nsynonyms:\n- purchases\n- transactions\n- sales\ncolumns:\n- name: order_id\n  type: bigint\n  description: Primary key.\n  profile:\n    nulls: 0.0\n    distinct: 2000\n    min: 1\n    max: 2000\n- name: customer_id\n  type: bigint\n  description: FK to analytics.customers.customer_id.\n  profile:\n    nulls: 0.0\n    distinct: 200\n    min: 1\n    max: 200\n- name: amount_cents\n  type: bigint\n  description: Order total in cents. Divide by 100 for dollars.\n  profile:\n    nulls: 0.0\n    min: 127\n    max: 310229\n    p50: 5011\n    p95: 31000\n- name: status\n  type: text\n  description: One of 'confirmed','refunded','partial_refund'.\n  profile:\n    nulls: 0.0\n    distinct: 3\n  sample_values:\n  - confirmed\n  - partial_refund\n  - refunded\n- name: created_at\n  type: timestamp\n  description: Order confirmation time (UTC).\n  profile:\n    nulls: 0.0\n    min: '2019-02-02'\n    max: '2026-06-28'\njoins:\n- to: analytics.customers\n  type: many_to_one\n  'on': orders.customer_id = customers.customer_id\nfilters:\n- name: last_quarter\n  sql: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n===== examples/revenue.yaml =====\n- question: What was net revenue last month?\n  sql: |\n    SELECT SUM(amount_cents)/100.0 AS net_revenue\n    FROM analytics.orders\n    WHERE status='confirmed'\n      AND created_at >= date_trunc('month', now()) - interval '1 month'\n      AND created_at <  date_trunc('month', now());\n  tags: [revenue, time-window]\n\n- question: How many orders were refunded?\n  sql: |\n    SELECT COUNT(*) AS refunded_orders\n    FROM analytics.orders\n    WHERE status='refunded';\n  tags: [orders, status]\n\n- question: What is net revenue by region?\n  sql: |\n    SELECT c.region,\n           SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\n    FROM analytics.orders o\n    JOIN analytics.customers c ON o.customer_id = c.customer_id\n    GROUP BY c.region\n    ORDER BY net_revenue DESC;\n  tags: [revenue, join, group-by]\n\n===== trusted/mrr.sql =====\n-- @name: monthly_recurring_revenue\n-- @params: month (date)\n-- @description: Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n===== instructions.md =====\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n\nPropose the ranked, minimal file diffs that fix the most failures. Return them all.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-x",
+        "response_schema": {
+          "$defs": {
+            "_EditDraft": {
+              "properties": {
+                "find": {
+                  "default": "",
+                  "title": "Find",
+                  "type": "string"
+                },
+                "replace": {
+                  "title": "Replace",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "replace"
+              ],
+              "title": "_EditDraft",
+              "type": "object"
+            },
+            "_ProposalDraft": {
+              "description": "One proposal as the model returns it (before it gets a stable id).",
+              "properties": {
+                "confidence": {
+                  "default": 0.0,
+                  "title": "Confidence",
+                  "type": "number"
+                },
+                "conflicts": {
+                  "default": "",
+                  "title": "Conflicts",
+                  "type": "string"
+                },
+                "edits": {
+                  "items": {
+                    "$ref": "#/$defs/_EditDraft"
+                  },
+                  "title": "Edits",
+                  "type": "array"
+                },
+                "layer": {
+                  "title": "Layer",
+                  "type": "string"
+                },
+                "predicted_fixes": {
+                  "default": 0,
+                  "title": "Predicted Fixes",
+                  "type": "integer"
+                },
+                "question_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Question Ids",
+                  "type": "array"
+                },
+                "rationale": {
+                  "default": "",
+                  "title": "Rationale",
+                  "type": "string"
+                },
+                "root_cause": {
+                  "title": "Root Cause",
+                  "type": "string"
+                },
+                "target_file": {
+                  "title": "Target File",
+                  "type": "string"
+                },
+                "title": {
+                  "title": "Title",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title",
+                "root_cause",
+                "layer",
+                "target_file"
+              ],
+              "title": "_ProposalDraft",
+              "type": "object"
+            }
+          },
+          "description": "The structured result of the single paid Coach call.",
+          "properties": {
+            "proposals": {
+              "items": {
+                "$ref": "#/$defs/_ProposalDraft"
+              },
+              "title": "Proposals",
+              "type": "array"
+            }
+          },
+          "title": "_CoachDraft",
+          "type": "object"
+        },
+        "system": "You are the Coach for a text-to-SQL agent. You improve the agent by editing its project files \u2014 never by editing SQL by hand. You are shown the questions the agent got wrong on its DEV benchmark (its plan, its generated SQL, the gold answer, the scorer verdicts, and any error) and the agent's CURRENT project files.\n\nYour job: cluster the failures by ROOT CAUSE, then for each cluster propose the MINIMAL, highest-leverage edit at the RIGHT layer of this hierarchy (most preferred first):\n  1. examples/     \u2014 a worked question\u2192SQL example (sets the accuracy ceiling)\n  2. trusted/      \u2014 a curated, blessed SQL asset\n  3. semantics/    \u2014 a measure, a synonym, a named filter, or a column/table description\n  4. instructions.md \u2014 a GLOBAL PROSE rule (LAST RESORT: prose conflicts and generalizes poorly; never reach for it when a measure, synonym, description, or example would fix it)\n\nRules: (1) prefer data/examples over prose; (2) keep every edit minimal and focused; (3) flag any conflict an edit could introduce with existing metadata; (4) rank proposals by leverage \u2014 how many failing questions each fixes and how confident you are; (5) each proposal targets exactly one named project file (relative path) and expresses the change as one or more find/replace EDITS: `find` is text copied VERBATIM from the shown file that uniquely locates the change, `replace` is what it becomes. Use an EMPTY `find` to append new content to the end of the file (or to create a new file). Copy anchors exactly \u2014 whitespace included. Give predicted_fixes and a confidence in [0,1].\n\nGENERALIZE, don't memorize. When several failures share a root cause, prefer ONE general fix (a measure, synonym, description, or named filter) that covers the whole cluster. Add an examples/ entry only when it teaches a reusable PATTERN that will also help questions you have NOT been shown \u2014 never an example that merely restates the gold SQL of a single failing question. Copying one question's gold into an example inflates the dev score without generalizing to the held-out set; that is training on the benchmark, not fixing the agent.\n\nA mismatch is NOT proof the agent is wrong. Some failing rows are UNRESOLVED \u2014 the generated SQL may be semantically equivalent to the gold, or the gold itself may be wrong. Each row is labelled with its status. For an unresolved row where the agent's SQL looks correct, do NOT contort the agent's context to match a questionable gold \u2014 return no proposal for it and let a human review the benchmark. Only propose context edits for failures that are genuinely the agent's fault.",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "claude-x",
+        "stop_reason": "tool_use",
+        "structured": {
+          "proposals": [
+            {
+              "confidence": 0.9,
+              "conflicts": "",
+              "edits": [
+                {
+                  "find": "",
+                  "replace": "measures:\n  - name: net_revenue\n    description: Revenue net of refunds.\n    sql: \"SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0\""
+                }
+              ],
+              "layer": "measure",
+              "predicted_fixes": 1,
+              "question_ids": [
+                "q_net_revenue_all"
+              ],
+              "rationale": "A reusable measure fixes every revenue question at the semantics layer.",
+              "root_cause": "the agent summed amount_cents without excluding refunds",
+              "target_file": "semantics/orders.yaml",
+              "title": "Add measure net_revenue to semantics/orders.yaml"
+            }
+          ]
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 10,
+          "output_tokens": 5
+        }
+      }
+    }
+  },
+  "version": 1
+}

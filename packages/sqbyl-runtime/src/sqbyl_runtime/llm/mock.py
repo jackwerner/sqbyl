@@ -43,6 +43,10 @@ class MockLLMClient(LLMClient):
     def __init__(self, replies: list[ScriptedReply] | None = None) -> None:
         self._replies: list[ScriptedReply] = list(replies or [])
         self.requests: list[LLMRequest] = []
+        # The resolved response for each request, in order — so a caller-supplied reply
+        # *function* (whose output isn't known ahead of time) can still be captured into a
+        # record-replay cassette by zipping ``requests`` with ``responses``.
+        self.responses: list[LLMResponse] = []
         self._cursor = 0
 
     @property
@@ -66,4 +70,5 @@ class MockLLMClient(LLMClient):
         # If the script didn't pin a model, echo the requested one for realism.
         if resolved.model == "mock":
             resolved = resolved.model_copy(update={"model": request.model})
+        self.responses.append(resolved)
         return resolved
