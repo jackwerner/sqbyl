@@ -13,18 +13,25 @@ opened per request since the console is a local, single-user tool.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from sqbyl.attention import (
+    decisions_from_coach_report,
+    decisions_from_review_pile,
+    route,
+)
 from sqbyl.calibration_io import append_calibration, judge_agreement
 from sqbyl.candidates_io import (
     get_candidate,
     load_candidates,
     update_candidate,
 )
+from sqbyl.coach import ApplyError, apply_proposal, latest_report, save_report
 from sqbyl.eval.benchmarks_io import append_to_dev_set
 from sqbyl.eval.report import latest_run, save_run
 from sqbyl.models import (
@@ -33,6 +40,7 @@ from sqbyl.models import (
     CandidateStatus,
     ExecutionEvidence,
     QuestionResult,
+    ReadinessSignal,
     ScoredRun,
     Verdict,
 )
@@ -107,6 +115,88 @@ def _headline(run: ScoredRun, project: Project) -> dict[str, object]:
         "n_reviewed": run.n_reviewed,
         "agreement": {"n": agreement.n, "n_agree": agreement.n_agree, "rate": agreement.rate},
     }
+
+
+def _readiness_view(sig: ReadinessSignal) -> dict[str, object]:
+    """The readiness meter for the client — fields plus the derived/labelled bits.
+
+    ``headline`` and the ``reached``/``low_confidence`` flags are computed properties, so they
+    have to be added explicitly; the ``~…(projected)`` framing keeps the estimate honest."""
+    return {
+        **sig.model_dump(mode="json"),
+        "reached": sig.reached,
+        "low_confidence": sig.low_confidence,
+        "headline": sig.headline(),
+    }
+
+
+def _queue_payload(project: Project, paths: SqbylPaths) -> dict[str, object]:
+    """Assemble the leverage-sorted attention queue from real artifacts (spec §5.5, plan 6.3).
+
+    The console opens onto this: the latest **dev** run's review pile + the latest Coach
+    report's not-yet-applied proposals, routed into auto-applied vs. a leverage-sorted queue
+    with a live readiness meter on top. Dev-only — the held-out test run is never assembled
+    here (invariant 3)."""
+    run = latest_run(paths, split="dev")
+    report = latest_report(paths)
+    total = run.total if run is not None else 0
+
+    decisions = []
+    if report is not None:
+        pending = report.model_copy(
+            update={"proposals": [p for p in report.proposals if p.applied_at is None]}
+        )
+        decisions += decisions_from_coach_report(pending, total=total)
+    if run is not None:
+        decisions += decisions_from_review_pile(run)
+
+    defaults = project.manifest.defaults
+    q = route(
+        decisions,
+        n_correct=run.n_correct if run is not None else 0,
+        n=total,
+        target=defaults.readiness_target,
+        auto_apply_threshold=defaults.auto_apply_threshold,
+    )
+    return {
+        "readiness": _readiness_view(q.readiness),
+        "auto_applied": [d.model_dump(mode="json") for d in q.auto_applied],
+        "queue": [d.model_dump(mode="json") for d in q.queue],
+    }
+
+
+def _record_resolution(
+    project: Project,
+    paths: SqbylPaths,
+    run: ScoredRun,
+    result: QuestionResult,
+    verdict: Verdict,
+    note: str,
+) -> None:
+    """Persist a human's authoritative call on a judged row + feed the judge calibration set.
+
+    Shared by the judge-review surface and the queue's accept path so both resolve a row the
+    same way: the human verdict becomes the resolution of record (flipping ``resolved_accuracy``,
+    never the deterministic floor), and — if the judge triaged the row — the agreement is logged
+    split-scoped (a test ruling must never coach the dev judge, invariant 3)."""
+    result.human_verdict = verdict
+    save_run(paths, run)
+    if result.judge_suggestion is not None:
+        append_calibration(
+            project,
+            CalibrationRecord(
+                run_id=run.run_id,
+                question_id=result.id,
+                split=run.split,
+                judge_suggestion=result.judge_suggestion,
+                human_verdict=verdict,
+                agreed=verdict is result.judge_suggestion,
+                question=result.question,
+                generated_sql=result.generated_sql,
+                gold_sql=result.gold_sql,
+                note=note,
+            ),
+        )
 
 
 def create_app(project: Project) -> FastAPI:
@@ -201,32 +291,66 @@ def create_app(project: Project) -> FastAPI:
         if result is None:
             raise HTTPException(status_code=404, detail=f"no question {question_id!r} in the run")
 
-        # The human's call is authoritative: it becomes the resolution of record for the run
-        # (so resolved_accuracy reflects it), overwriting the same run file in place.
-        result.human_verdict = req.verdict
-        save_run(paths, run)
-
-        # Calibrate the judge: record whether the human agreed with its suggestion. Only rows
-        # the judge actually triaged are calibration data (spec §7).
-        if result.judge_suggestion is not None:
-            append_calibration(
-                project,
-                CalibrationRecord(
-                    run_id=run.run_id,
-                    question_id=question_id,
-                    # Split-scoped: a test ruling must never coach the dev judge (invariant 3).
-                    split=run.split,
-                    judge_suggestion=result.judge_suggestion,
-                    human_verdict=req.verdict,
-                    agreed=req.verdict is result.judge_suggestion,
-                    # Carried so this ruling can coach the judge as a few-shot example.
-                    question=result.question,
-                    generated_sql=result.generated_sql,
-                    gold_sql=result.gold_sql,
-                    note=req.note,
-                ),
-            )
+        # The human's call is authoritative: it becomes the resolution of record (so
+        # resolved_accuracy reflects it) and feeds the judge calibration set.
+        _record_resolution(project, paths, run, result, req.verdict, req.note)
         return {"ok": True, "row": _review_row(result), "run": _headline(run, project)}
+
+    # --- the attention queue (spec §5.5, plan 6.3) -----------------------------------------
+
+    @app.get("/api/queue")
+    def queue() -> dict[str, object]:
+        # The console's front door: the leverage-sorted queue + live readiness meter.
+        return _queue_payload(project, paths)
+
+    @app.post("/api/queue/{decision_id}/accept")
+    def accept_decision(decision_id: str) -> dict[str, object]:
+        # Accepting a card acts on the artifact it came from, then returns the fresh queue so
+        # the meter moves live: a Coach card applies its edit; a judge card confirms the
+        # advisory suggestion as the human's call. The card then drops out of the next assemble.
+        if decision_id.startswith("coach:"):
+            report = latest_report(paths)
+            proposal = report.proposal(decision_id[len("coach:") :]) if report else None
+            if report is None or proposal is None:
+                raise HTTPException(
+                    status_code=404, detail=f"no coach proposal for {decision_id!r}"
+                )
+            # Mirror the CLI guard: refuse a re-apply (an empty-`find` append would otherwise
+            # silently duplicate). The queue already filters applied proposals out, so this only
+            # bites a stale re-POST.
+            if proposal.applied_at is not None:
+                return {
+                    "ok": False,
+                    "detail": "already applied",
+                    **_queue_payload(project, paths),
+                }
+            try:
+                path = apply_proposal(project, proposal)
+            except ApplyError as exc:
+                return {"ok": False, "detail": str(exc), **_queue_payload(project, paths)}
+            proposal.applied_at = datetime.now(UTC)  # stamp + persist the audit trail
+            save_report(paths, report)
+            # Name the changed file so the client can show the (git-based) undo path — an
+            # applied edit is an ordinary working-tree change, never a hidden mutation.
+            rel = path.relative_to(project.root.resolve())
+            return {"ok": True, "changed": str(rel), **_queue_payload(project, paths)}
+
+        if decision_id.startswith("judge:"):
+            run = latest_run(paths, split="dev")
+            prefix = f"judge:{run.run_id}:" if run is not None else None
+            # Parse the question id off the *left* (past the known run_id), so a question id
+            # that itself contains a colon can't be truncated into the wrong row.
+            qid = decision_id[len(prefix) :] if prefix and decision_id.startswith(prefix) else None
+            result = next((r for r in run.results if r.id == qid), None) if run and qid else None
+            if run is None or result is None:
+                raise HTTPException(status_code=404, detail=f"no review row for {decision_id!r}")
+            # Accept = confirm the judge's advisory suggestion; a genuinely-ambiguous row with
+            # no suggestion stays in review (the human still owns it).
+            verdict = result.judge_suggestion or Verdict.manual_review
+            _record_resolution(project, paths, run, result, verdict, "")
+            return {"ok": True, **_queue_payload(project, paths)}
+
+        raise HTTPException(status_code=422, detail=f"cannot accept decision {decision_id!r}")
 
     return app
 
