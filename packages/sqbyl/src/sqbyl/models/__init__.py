@@ -15,6 +15,13 @@ from sqbyl.models.candidates import (
     ExecutionEvidence,
     SynthResult,
 )
+from sqbyl.models.coach import (
+    LAYER_PREFERENCE,
+    PROSE_LAYERS,
+    CoachLayer,
+    CoachProposal,
+    CoachReport,
+)
 from sqbyl.models.judges import (
     ALL_JUDGES,
     GOLD_MISMATCH_JUDGES,
@@ -52,6 +59,8 @@ __all__ = [
     "ALL_JUDGES",
     "EVIDENCE_ROW_CAP",
     "GOLD_MISMATCH_JUDGES",
+    "LAYER_PREFERENCE",
+    "PROSE_LAYERS",
     "JUDGE_ANSWER_QUALITY",
     "JUDGE_COMPLETENESS",
     "JUDGE_LOGICAL_ACCURACY",
@@ -67,6 +76,9 @@ __all__ = [
     "CalibrationRecord",
     "Candidate",
     "CandidateStatus",
+    "CoachLayer",
+    "CoachProposal",
+    "CoachReport",
     "DatabaseConfig",
     "DefaultsConfig",
     "DropReason",

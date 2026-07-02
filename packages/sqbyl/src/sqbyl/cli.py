@@ -387,6 +387,105 @@ def _synth(args: list[str]) -> int:
     return 0
 
 
+def _coach(args: list[str]) -> int:
+    """`sqbyl coach [DIR] [--budget $N] [--replay P] [--record P] [--model M]`.
+
+    The headline loop (spec §8): read the latest **dev** eval run's failures and propose a
+    ranked list of applyable file diffs — the minimal, highest-leverage edit at the right
+    layer (examples > semantics > prose). One paid call; proposals are saved so
+    ``sqbyl coach apply N`` (Phase 5.4) can write them. The Coach never sees ``test.yaml``.
+    """
+    from sqbyl.coach import coach, save_report
+    from sqbyl.eval.report import latest_run
+    from sqbyl.llm import build_llm_client
+    from sqbyl.project import Project
+    from sqbyl_runtime.cost import estimate_cost
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
+
+    replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
+    budget_opt = _opt(args, "budget")
+    consumed = {replay, record, model_opt, budget_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    model = model_opt or project.manifest.model.for_role("coach")
+    budget = float(budget_opt) if budget_opt is not None else None
+
+    paths = SqbylPaths(project.root)
+    run = latest_run(paths, split="dev")
+    if run is None:
+        print("no dev run yet — run `sqbyl eval dev` first, then coach its failures")
+        return 1
+    from sqbyl.coach import gather_failures
+
+    failures = gather_failures(run)
+    if not failures:
+        print(f"dev run {run.run_id[:8]} is clean ({run.n_correct}/{run.total}) — nothing to coach")
+        return 0
+
+    est = estimate_cost(model=model, calls=1, avg_input_tokens=4000, avg_output_tokens=2000)
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    print(
+        f"▸ coach {len(failures)} dev failure(s) from run {run.run_id[:8]} on {model} — "
+        f"estimated ~${est:.4f} (paid){cap}"
+    )
+    if budget is not None and est > budget:
+        print(f"  ✗ estimate ~${est:.4f} exceeds budget ${budget:.2f} — raise --budget")
+        return 1
+
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    report = coach(
+        project,
+        run,
+        llm=llm,
+        model=model,
+        trace_writer=TraceWriter(paths.ensure().traces_dir / "coach.jsonl"),
+    )
+    spent = _meter(
+        project, report.usage, model=model, command="coach", role="coach", run_id=new_trace_id()
+    )
+    save_report(paths, report)
+
+    # How much of the target set is trustworthy: an unresolved mismatch may be a false
+    # failure (the agent's SQL could be equivalent), so surface it rather than implying every
+    # coached row is a real bug (spec §7 — a mismatch is not proof of incorrectness).
+    unresolved = sum(1 for r in failures if r.needs_review and r.human_verdict is None)
+    noise = f" · {unresolved} unresolved mismatch(es) — may be false failures" if unresolved else ""
+    print(
+        f"\nsqbyl Coach — {report.n_failures} failing{noise} · {report.n_proposals} proposal(s) · "
+        f"predicts ~{report.total_predicted_fixes} fix(es) (model estimate, unverified) · "
+        f"${spent:.4f}\n"
+    )
+    for i, p in enumerate(report.proposals, start=1):
+        flag = (
+            "  ⚠ global prose — last resort"
+            if p.is_prose
+            else "  ⚠ single-question example — memorization risk"
+            if p.memorization_risk
+            else ""
+        )
+        print(f"[{i}] {p.title}   → {p.target_file}{flag}")
+        # predicted_fixes / confidence are the model's OWN unvalidated guesses (ml-systems):
+        # label them as such, not as a measured, calibrated leverage score.
+        print(
+            f"    predicts ~{p.predicted_fixes} fix(es) · confidence {p.confidence:.0%} "
+            f"(self-reported, unverified) · root cause: {p.root_cause}"
+        )
+        if p.conflicts:
+            print(f"    ⚠ conflict: {p.conflicts}")
+        for line in p.diff.splitlines():
+            print(f"    {line}")
+        print()
+    print(
+        "⚠ These edits raise the DEV score, which is UNVALIDATED until you re-score the "
+        "held-out test set.\n"
+        "  A rising dev with a flat test is overfitting — after `coach apply`, run "
+        "`sqbyl eval test` and watch the dev↔test gap.\n"
+        "apply with: sqbyl coach apply N [...]  (Phase 5.4)"
+    )
+    return 0
+
+
 def _review(args: list[str]) -> int:
     """`sqbyl review [DIR] [--host H] [--port N]` — launch the local review console."""
     import uvicorn
@@ -503,8 +602,10 @@ def main(argv: list[str] | None = None) -> int:
         return _synth(args[1:])
     if args and args[0] == "review":
         return _review(args[1:])
+    if args and args[0] == "coach":
+        return _coach(args[1:])
     print(
-        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, "
+        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, coach, "
         "schema export, version"
     )
     return 0
