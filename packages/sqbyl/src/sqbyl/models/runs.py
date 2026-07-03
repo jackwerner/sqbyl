@@ -151,6 +151,11 @@ class ScoredRun(SqbylModel):
     # judged run is reproducible from its stamped inputs — not just the model ids (spec §7,
     # §11). ``None`` when nothing coached the judge (a fresh project). See ``score_run``.
     judge_calibration: str | None = None
+    # A content hash of the agent's brain (semantics + instructions + examples + trusted
+    # assets + selection) that produced this run's answers. A release ties its scorecard to
+    # this, refusing to stamp a held-out number the shipped files didn't earn (spec §11).
+    # ``None`` on a run that predates fingerprinting (or a hand-built one in tests).
+    knowledge_fingerprint: str | None = None
     results: list[QuestionResult] = Field(default_factory=list)
 
     # --- aggregates: computed from results so they can never drift (the quality KPIs

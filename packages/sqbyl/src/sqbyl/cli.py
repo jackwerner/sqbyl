@@ -280,6 +280,81 @@ def _report(args: list[str]) -> int:
     return 0
 
 
+def _release(args: list[str]) -> int:
+    """`sqbyl release create --tag vN [DIR] [-o PATH]` — compile the project into a
+    portable release JSON stamped with the held-out scorecard (spec §11, plan 8.1).
+
+    A $0 file operation: no DB connection, no tokens. The headline accuracy is read from
+    the most recent persisted **held-out test** run — run `sqbyl eval test` first."""
+    from sqbyl.eval.judges import load_judge_prompts
+    from sqbyl.project import Project
+    from sqbyl.release import OVERFITTING_GAP, ReleaseError, build_release, overfitting_gap
+    from sqbyl.release import write_release as _write
+
+    if not args or args[0] != "create":
+        print("usage: sqbyl release create --tag vN [DIR] [-o PATH]")
+        return 2
+    rest = args[1:]
+    tag = _opt(rest, "tag")
+    out = _opt(rest, "out") or _opt(rest, "o")
+    if tag is None:
+        print("release create needs --tag (e.g. --tag v1)")
+        return 2
+    consumed = {tag, out}
+    positional = [a for a in rest if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    try:
+        release = build_release(project, tag, judge_prompts=load_judge_prompts(project))
+    except ReleaseError as exc:
+        print(f"cannot build release: {exc}")
+        return 1
+
+    destination = out or str(project.root)
+    path = _write(release, destination)
+    sc = release.scorecard
+    print(f"▸ release {release.name} {release.tag} → {path}")
+    # Headline accuracy with its Wilson interval — a point estimate over tens of questions
+    # is not a settled number (ml-systems). Small n gets an explicit caveat.
+    ci = ""
+    if sc.accuracy_low is not None and sc.accuracy_high is not None:
+        ci = f", 95% CI {sc.accuracy_low:.0%}–{sc.accuracy_high:.0%}"
+    unresolved = f", {sc.n_manual_review} unresolved" if sc.n_manual_review else ""
+    dev = f" · dev {sc.dev_accuracy:.0%} (n={sc.dev_n})" if sc.dev_accuracy is not None else ""
+    caveat = " — small sample, directional" if sc.n < _SMALL_EVAL else ""
+    print(
+        f"  headline accuracy {sc.accuracy:.0%} "
+        f"(held-out test, n={sc.n}{ci}{unresolved}){dev}{caveat}"
+    )
+    if sc.judge_human_agreement is not None:
+        print(
+            f"  judge↔human agreement {sc.judge_human_agreement:.0%} "
+            f"(n={sc.judge_human_agreement_n}, reviewed rows only)"
+        )
+    print(f"  blessed on {sc.blessed_with_models or '{}'} · schema {release.schema_fingerprint}")
+    if sc.knowledge_fingerprint is None:
+        print(
+            "  ⚠ scorecard provenance unverified — the held-out eval predates fingerprinting; "
+            "re-run `sqbyl eval test` to tie the number to these exact files."
+        )
+    # A large dev↔test gap means the loop may have overfit dev rather than generalizing (§11).
+    gap = overfitting_gap(release)
+    if gap is not None and gap > OVERFITTING_GAP:
+        small = sc.n < _SMALL_EVAL or (sc.dev_n or 0) < _SMALL_EVAL
+        hedge = (
+            " (both sets are small — read this as directional, not a settled gap)" if small else ""
+        )
+        print(
+            f"  ⚠ dev↔test gap {gap:+.0%} exceeds {OVERFITTING_GAP:.0%} — the held-out number "
+            f"is the one to trust; a large gap suggests overfitting, not generalization.{hedge}"
+        )
+    return 0
+
+
+# Below this many questions an eval accuracy is directional, not a settled number — the same
+# small-sample posture the §7.5 report takes; kept local to the release CLI's caveats.
+_SMALL_EVAL = 30
+
+
 def _ask(args: list[str]) -> int:
     """`sqbyl ask "question" [DIR] [--replay PATH]` — answer one question end-to-end."""
     from sqbyl.estimates import ask_estimate
@@ -1128,9 +1203,11 @@ def main(argv: list[str] | None = None) -> int:
         return _init(args[1:])
     if args and args[0] == "report":
         return _report(args[1:])
+    if args and args[0] == "release":
+        return _release(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, schema export, version"
+        "coach, cost, report, release, schema export, version"
     )
     return 0
 

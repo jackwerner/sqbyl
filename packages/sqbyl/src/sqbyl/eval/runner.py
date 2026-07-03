@@ -33,6 +33,7 @@ from sqbyl.projectfiles import load_knowledge, load_trusted_assets
 from sqbyl_runtime.context import ProjectKnowledge
 from sqbyl_runtime.cost import price_usage
 from sqbyl_runtime.db import Database
+from sqbyl_runtime.fingerprint import fingerprint_knowledge
 from sqbyl_runtime.llm.base import LLMClient
 from sqbyl_runtime.models import Dialect
 from sqbyl_runtime.pipeline import ask
@@ -171,6 +172,9 @@ def score_run(
         models=models,
         as_of=as_of,
         judge_calibration=_calibration_fingerprint(judge_examples),
+        # Tie this run to the exact brain that produced it, so a release can refuse to
+        # stamp a held-out score against files that have since changed (spec §11).
+        knowledge_fingerprint=fingerprint_knowledge(knowledge),
         results=results,
     )
 

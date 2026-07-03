@@ -45,20 +45,47 @@ class Scorecard(SqbylModel):
     """The eval result that justified promoting a version (spec §11).
 
     The headline ``accuracy`` is always the **held-out test** number; ``dev_*`` is
-    shown beside it so a reviewer can see the overfitting gap.
+    shown beside it so a reviewer can see the overfitting gap. The point estimate is
+    carried **with its Wilson interval** (``accuracy_low``/``accuracy_high``) and its
+    unresolved count (``n_manual_review``), because on the tens-of-questions sets sqbyl
+    targets a bare percentage over-states how settled the number is, and a miss that is
+    "unresolved" is not the same as one that is "wrong". Provenance (``as_of``, the judge
+    calibration fingerprint, and the brain's ``knowledge_fingerprint``) is stamped so the
+    number is reproducible from its inputs, not just asserted.
     """
 
     benchmark: str = Field(description="Which set produced the headline number, e.g. 'test'.")
     accuracy: float = Field(ge=0.0, le=1.0)
     n: int = Field(ge=0, description="Number of questions in the headline set.")
+    # 95% Wilson interval for the headline accuracy — how far to trust the point estimate
+    # on a small eval set (spec §7.5). ``None`` only on a legacy scorecard built before this.
+    accuracy_low: float | None = Field(default=None, ge=0.0, le=1.0)
+    accuracy_high: float | None = Field(default=None, ge=0.0, le=1.0)
+    # Unresolved (``manual_review``) rows in the headline set. These count *against*
+    # ``accuracy`` (the deterministic floor), so surfacing the count distinguishes
+    # "60% correct, 40% unadjudicated" from "60% correct, 40% confirmed wrong".
+    n_manual_review: int = Field(default=0, ge=0)
     dev_accuracy: float | None = Field(default=None, ge=0.0, le=1.0)
     dev_n: int | None = Field(default=None, ge=0)
     human_reviewed: bool = False
+    # Judge↔human agreement over the **headline split's** reviewed rows, with its sample
+    # size — a denominator-free rate is meaningless. ``None`` when nothing on this split has
+    # been reviewed. Selection-biased (measured on the disputed pile), so read it as
+    # "agreement on reviewed rows", never as blanket judge reliability.
     judge_human_agreement: float | None = Field(default=None, ge=0.0, le=1.0)
+    judge_human_agreement_n: int | None = Field(default=None, ge=0)
     cost_usd: float | None = Field(default=None, ge=0.0)
     latency_p50_ms: float | None = Field(default=None, ge=0.0)
+    # The frozen clock the headline run used to normalize ``now()``-relative gold, and the
+    # judge few-shot fingerprint in force — both needed to reproduce the number (spec §7/§11).
+    as_of: datetime | None = None
+    judge_calibration: str | None = None
+    # The brain (project-files) fingerprint the headline run scored, so the shipped files
+    # can be proven to be the ones that earned this number (spec §11). ``None`` = unverifiable.
+    knowledge_fingerprint: str | None = None
     # role -> model id, e.g. {"agent": "claude-opus-4-8", "judge": "claude-opus-4-8"}.
-    # An accuracy number is only meaningful for the model that produced it.
+    # An accuracy number is only meaningful for the model that produced it. A missing
+    # ``judge`` entry means judging didn't run, not that it ran on an unknown model.
     blessed_with_models: dict[str, str] = Field(default_factory=dict)
 
 

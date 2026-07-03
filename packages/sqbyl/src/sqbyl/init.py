@@ -46,6 +46,7 @@ from sqbyl.semantics_io import (
 )
 from sqbyl.state.hashing import file_digest
 from sqbyl_runtime.cost import CostEstimate, SpendMeter, price_usage
+from sqbyl_runtime.fingerprint import fingerprint_semantics
 from sqbyl_runtime.models import SqbylModel, TableSemantics
 from sqbyl_runtime.state.layout import SqbylPaths
 
@@ -88,16 +89,11 @@ def _schema_fingerprint(raw_tables: list[TableSemantics]) -> str:
     semantics YAML. The content hash covers only project *files*, so a schema/data change that
     doesn't touch the YAML would otherwise leave the baseline-skip gate blind to it — this is
     what makes ``init`` re-eval when the database itself moved (ml-systems: measurement validity).
-    """
-    import hashlib
 
-    digest = hashlib.sha256()
-    for table in sorted(raw_tables, key=lambda t: t.table):
-        digest.update(table.table.encode())
-        for col in table.columns:
-            digest.update(f"\0{col.name}:{col.type}".encode())
-        digest.update(b"\0\0")
-    return "sha256:" + digest.hexdigest()
+    The same hash a release is stamped with (:mod:`sqbyl_runtime.fingerprint`), so the
+    ``init`` baseline gate and a shipped release speak of the schema identically.
+    """
+    return fingerprint_semantics(raw_tables)
 
 
 def run_free_pass(project: Project, *, force: bool = False) -> FreePass:
