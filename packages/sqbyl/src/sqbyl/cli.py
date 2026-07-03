@@ -119,16 +119,102 @@ def _meter(
     return cost
 
 
+def _budget_opts(args: list[str]) -> tuple[float | None, bool, bool] | None:
+    """Parse ``--budget $N`` / ``--auto`` / ``--dry-run`` shared by every paid command.
+
+    Returns ``(budget, auto, dry_run)`` or ``None`` when the combination is invalid (an
+    error is printed). ``--budget`` is **required** in ``--auto`` (invariant 5, spec §9):
+    the headless path hard-stops at the cap, so it must be given one it can't silently blow.
+    """
+    auto = "--auto" in args
+    dry_run = "--dry-run" in args
+    budget_opt = _opt(args, "budget")
+    budget: float | None = None
+    if budget_opt is not None:
+        try:
+            budget = float(budget_opt.lstrip("$"))
+        except ValueError:
+            print(f"invalid --budget {budget_opt!r}; expected a dollar amount like 5 or $5")
+            return None
+        if budget < 0:
+            print("--budget must be non-negative")
+            return None
+    if auto and budget is None:
+        print("--auto requires --budget $N (a headless run must have a hard cap to stop at)")
+        return None
+    return budget, auto, dry_run
+
+
+def _authorize(
+    meter: object, next_cost: float, *, auto: bool, label: str, prompt: object = None
+) -> bool:
+    """Gate the next paid step against the live meter's budget (spec §5.5, §9).
+
+    Under budget → proceed silently. Over budget → hard-stop in ``--auto``, or pause and
+    ask in guided mode. ``prompt`` defaults to :func:`input`, resolved at call time so a
+    test can patch ``builtins.input``.
+    """
+    from sqbyl_runtime.cost import SpendMeter
+
+    assert isinstance(meter, SpendMeter)
+    if not meter.would_exceed(next_cost):
+        return True
+    if auto:
+        print(
+            f"  ✗ budget ${meter.budget:.2f} reached (${meter.spent:.4f} spent) — "
+            f"{label} needs ~${next_cost:.4f}; stopping"
+        )
+        return False
+    remaining = meter.remaining or 0.0
+    ask_fn = prompt if prompt is not None else input
+    assert callable(ask_fn)
+    answer = ask_fn(
+        f"  ⏸ {label} ~${next_cost:.4f} would exceed the ${meter.budget:.2f} budget "
+        f"(${remaining:.4f} left). Proceed anyway? [y/N] "
+    )
+    return str(answer).strip().lower().startswith("y")
+
+
+def _cost(args: list[str]) -> int:
+    """`sqbyl cost <command> [DIR] [--n N]` — estimate a paid command, spend nothing (spec §9)."""
+    from sqbyl.estimates import estimate_for_command
+    from sqbyl.project import Project
+
+    if not args:
+        print("usage: sqbyl cost <ask|annotate|synth|eval|coach> [DIR]")
+        return 2
+    command = args[0]
+    n_opt = _opt(args, "n")
+    positional = [a for a in args[1:] if not a.startswith("-") and a != n_opt]
+    project = Project.load(positional[0] if positional else ".")
+    try:
+        estimate = estimate_for_command(project, command, n=int(n_opt) if n_opt else 20)
+    except KeyError:
+        print(f"'{command}' is not a paid command — nothing to estimate")
+        return 2
+    print(f"▸ cost estimate for `sqbyl {command}` (no API calls — nothing spent):\n")
+    print(estimate.render())
+    print(
+        f"\n{estimate.calls} planned call(s) · ~${estimate.total_usd:.4f} — "
+        "run the command (without --dry-run) to spend"
+    )
+    return 0
+
+
 def _ask(args: list[str]) -> int:
     """`sqbyl ask "question" [DIR] [--replay PATH]` — answer one question end-to-end."""
+    from sqbyl.estimates import ask_estimate
     from sqbyl.llm import build_llm_client
     from sqbyl.project import Project
     from sqbyl.projectfiles import load_knowledge
-    from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.pipeline import ask
     from sqbyl_runtime.state.layout import SqbylPaths
     from sqbyl_runtime.state.traces import TraceWriter
 
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
     replay = _opt(args, "replay")
     positional = [a for a in args if not a.startswith("-") and a != replay]
     if not positional:
@@ -138,8 +224,29 @@ def _ask(args: list[str]) -> int:
     project = Project.load(positional[1] if len(positional) > 1 else ".")
     model = project.manifest.model.for_role("agent")
 
-    est = estimate_cost(model=model, calls=1, avg_input_tokens=1500, avg_output_tokens=300)
-    print(f"▸ asking on {model} — estimated ~${est:.4f} for 1 call (paid)")
+    estimate = ask_estimate(
+        model, self_repair_attempts=project.manifest.defaults.self_repair_attempts
+    )
+    if dry_run:
+        print(f"▸ ask (dry run — no API calls):\n\n{estimate.render()}")
+        return 0
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    print(f"▸ asking on {model} — estimated ~${estimate.total_usd:.4f} (paid){cap}")
+    # A single pre-estimated call: gate it up front so `ask` honors the uniform budget
+    # contract (auto hard-stops; guided asks) like every other paid command.
+    if budget is not None and estimate.total_usd > budget + 1e-9:
+        if auto:
+            print(
+                f"  ✗ estimate ~${estimate.total_usd:.4f} exceeds budget ${budget:.2f} — stopping"
+            )
+            return 1
+        answer = input(
+            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            "Proceed anyway? [y/N] "
+        )
+        if not answer.strip().lower().startswith("y"):
+            print("  aborted — nothing spent")
+            return 1
 
     knowledge = load_knowledge(project)
     llm = build_llm_client(project.manifest, replay=replay)
@@ -188,6 +295,7 @@ def _eval(args: list[str]) -> int:
     """
     from datetime import datetime
 
+    from sqbyl.estimates import eval_estimate
     from sqbyl.eval.benchmarks_io import Split
     from sqbyl.eval.heldout import load_for_eval
     from sqbyl.eval.report import (
@@ -199,9 +307,12 @@ def _eval(args: list[str]) -> int:
     )
     from sqbyl.models import Verdict
     from sqbyl.project import Project
-    from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.state.layout import SqbylPaths
 
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
     replay, record, as_of_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "as-of")
     consumed = {replay, record, as_of_opt}
     positional = [a for a in args if not a.startswith("-") and a not in consumed]
@@ -237,20 +348,42 @@ def _eval(args: list[str]) -> int:
                 "(ideally once per blessed version); iterate on dev."
             )
 
-    est = estimate_cost(
-        model=model, calls=len(questions), avg_input_tokens=1500, avg_output_tokens=300
-    )
     judging = project.manifest.automation.auto_judge
+    judge_model = project.manifest.model.for_role("judge") if judging else None
+    estimate = eval_estimate(
+        model,
+        questions=len(questions),
+        judge_model=judge_model,
+        self_repair_attempts=project.manifest.defaults.self_repair_attempts,
+    )
+    if dry_run:
+        print(f"▸ eval {split.value} (dry run — no API calls):\n\n{estimate.render()}")
+        return 0
     judge_note = (
-        " (agent only; judging adds up to 3 calls per review-pile row — plus a small few-shot "
-        "preamble once the judge is calibrated — all metered live)"
+        " (agent + a bounded judge allowance per review-pile row, all metered live)"
         if judging
         else ""
     )
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
     print(
         f"▸ eval {split.value} — {len(questions)} question(s) on {model}, "
-        f"estimated ~${est:.4f} (paid){judge_note}"
+        f"estimated ~${estimate.total_usd:.4f} (paid){judge_note}{cap}"
     )
+    # A bounded single pass: gate on the whole-run estimate up front. Auto hard-stops;
+    # guided asks. (Live mid-run capping arrives with the orchestrated `init`, Phase 7.2.)
+    if budget is not None and estimate.total_usd > budget + 1e-9:
+        if auto:
+            print(
+                f"  ✗ estimate ~${estimate.total_usd:.4f} exceeds budget ${budget:.2f} — stopping"
+            )
+            return 1
+        answer = input(
+            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            "Proceed anyway? [y/N] "
+        )
+        if not answer.strip().lower().startswith("y"):
+            print("  aborted — nothing spent")
+            return 1
 
     run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
 
@@ -335,37 +468,52 @@ def _synth(args: list[str]) -> int:
     from datetime import datetime
 
     from sqbyl.candidates_io import add_candidates, candidates_path
+    from sqbyl.estimates import synth_estimate
     from sqbyl.llm import build_llm_client
     from sqbyl.models import DropReason
     from sqbyl.project import Project
     from sqbyl.synth import synthesize
-    from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.state.layout import SqbylPaths
     from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
 
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
-    n_opt, budget_opt, as_of_opt = _opt(args, "n"), _opt(args, "budget"), _opt(args, "as-of")
-    consumed = {replay, record, model_opt, n_opt, budget_opt, as_of_opt}
+    n_opt, as_of_opt = _opt(args, "n"), _opt(args, "as-of")
+    consumed = {replay, record, model_opt, n_opt, as_of_opt}
     positional = [a for a in args if not a.startswith("-") and a not in consumed]
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.for_role("synth")
     n = int(n_opt) if n_opt else 20
-    budget = float(budget_opt) if budget_opt is not None else None
     try:
         as_of = datetime.fromisoformat(as_of_opt) if as_of_opt else None
     except ValueError:
         print(f"invalid --as-of {as_of_opt!r}; expected an ISO datetime like 2026-06-30")
         return 2
 
-    # One drafting call producing a batch — estimate a large output for ~n questions.
-    est = estimate_cost(model=model, calls=1, avg_input_tokens=2000, avg_output_tokens=2000)
+    estimate = synth_estimate(model, n=n)
+    if dry_run:
+        print(f"▸ synth (dry run — no API calls):\n\n{estimate.render()}")
+        return 0
     cap = f" · budget ${budget:.2f}" if budget is not None else ""
-    print(f"▸ synth ~{n} candidate(s) on {model} — estimated ~${est:.4f} (paid){cap}")
-    if budget is not None and est > budget:
-        print(
-            f"  ✗ estimate ~${est:.4f} exceeds budget ${budget:.2f} — raise --budget or lower --n"
+    print(
+        f"▸ synth ~{n} candidate(s) on {model} — estimated ~${estimate.total_usd:.4f} (paid){cap}"
+    )
+    if budget is not None and estimate.total_usd > budget + 1e-9:
+        if auto:
+            print(
+                f"  ✗ estimate ~${estimate.total_usd:.4f} exceeds budget ${budget:.2f} — stopping"
+            )
+            return 1
+        answer = input(
+            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            "Proceed anyway? [y/N] "
         )
-        return 1
+        if not answer.strip().lower().startswith("y"):
+            print("  aborted — nothing spent (raise --budget or lower --n)")
+            return 1
 
     llm = build_llm_client(project.manifest, replay=replay, record=record)
     paths = SqbylPaths(project.root).ensure()
@@ -420,43 +568,59 @@ def _coach(args: list[str]) -> int:
     """
     if args and args[0] == "apply":
         return _coach_apply(args[1:])
-    from sqbyl.coach import coach, save_report
+    from sqbyl.coach import coach, gather_failures, save_report
+    from sqbyl.estimates import coach_estimate
     from sqbyl.eval.report import latest_run
     from sqbyl.llm import build_llm_client
     from sqbyl.project import Project
-    from sqbyl_runtime.cost import estimate_cost
     from sqbyl_runtime.state.layout import SqbylPaths
     from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
 
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
-    budget_opt = _opt(args, "budget")
-    consumed = {replay, record, model_opt, budget_opt}
+    consumed = {replay, record, model_opt}
     positional = [a for a in args if not a.startswith("-") and a not in consumed]
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.for_role("coach")
-    budget = float(budget_opt) if budget_opt is not None else None
 
     paths = SqbylPaths(project.root)
     run = latest_run(paths, split="dev")
+    failures = gather_failures(run) if run is not None else []
+
+    if dry_run:
+        # One drafting call regardless of failure count; label it with what's on hand.
+        rendered = coach_estimate(model, failures=len(failures)).render()
+        print(f"▸ coach (dry run — no API calls):\n\n{rendered}")
+        return 0
     if run is None:
         print("no dev run yet — run `sqbyl eval dev` first, then coach its failures")
         return 1
-    from sqbyl.coach import gather_failures
-
-    failures = gather_failures(run)
     if not failures:
         print(f"dev run {run.run_id[:8]} is clean ({run.n_correct}/{run.total}) — nothing to coach")
         return 0
 
-    est = estimate_cost(model=model, calls=1, avg_input_tokens=4000, avg_output_tokens=2000)
+    estimate = coach_estimate(model, failures=len(failures))
     cap = f" · budget ${budget:.2f}" if budget is not None else ""
     print(
         f"▸ coach {len(failures)} dev failure(s) from run {run.run_id[:8]} on {model} — "
-        f"estimated ~${est:.4f} (paid){cap}"
+        f"estimated ~${estimate.total_usd:.4f} (paid){cap}"
     )
-    if budget is not None and est > budget:
-        print(f"  ✗ estimate ~${est:.4f} exceeds budget ${budget:.2f} — raise --budget")
-        return 1
+    if budget is not None and estimate.total_usd > budget + 1e-9:
+        if auto:
+            print(
+                f"  ✗ estimate ~${estimate.total_usd:.4f} exceeds budget ${budget:.2f} — stopping"
+            )
+            return 1
+        answer = input(
+            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            "Proceed anyway? [y/N] "
+        )
+        if not answer.strip().lower().startswith("y"):
+            print("  aborted — nothing spent (raise --budget)")
+            return 1
 
     llm = build_llm_client(project.manifest, replay=replay, record=record)
     report = coach(
@@ -599,19 +763,23 @@ def _annotate(args: list[str]) -> int:
     metered total reaches the cap, remaining tables are left for a later run.
     """
     from sqbyl.annotate import annotate_table
+    from sqbyl.estimates import annotate_estimate
     from sqbyl.llm import build_llm_client
     from sqbyl.project import Project
     from sqbyl.semantics_io import dump_yaml_path, merge_annotation
     from sqbyl.yamlio import load_yaml
-    from sqbyl_runtime.cost import estimate_cost
+    from sqbyl_runtime.cost import SpendMeter
     from sqbyl_runtime.models import TableSemantics
     from sqbyl_runtime.state.layout import SqbylPaths
     from sqbyl_runtime.state.traces import Span, TraceWriter, new_span_id, new_trace_id
+    from sqbyl_runtime.state.usage import UsageStore
 
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
-    budget_opt = _opt(args, "budget")
-    budget = float(budget_opt) if budget_opt is not None else None
-    consumed = {replay, record, model_opt, budget_opt}
+    consumed = {replay, record, model_opt}
     positional = [a for a in args if not a.startswith("-") and a not in consumed]
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.default
@@ -621,9 +789,16 @@ def _annotate(args: list[str]) -> int:
         print("no semantics/*.yaml found — run `sqbyl introspect` and `sqbyl profile` first")
         return 1
 
-    est = estimate_cost(model=model, calls=len(paths), avg_input_tokens=1500, avg_output_tokens=400)
+    estimate = annotate_estimate(model, tables=len(paths))
+    if dry_run:
+        print(f"▸ annotate (dry run — no API calls):\n\n{estimate.render()}")
+        return 0
+    per_table = annotate_estimate(model, tables=1).total_usd
     cap = f" · budget ${budget:.2f}" if budget is not None else ""
-    print(f"▸ annotating {len(paths)} table(s) on {model} — estimated ~${est:.4f} (paid){cap}")
+    print(
+        f"▸ annotating {len(paths)} table(s) on {model} — "
+        f"estimated ~${estimate.total_usd:.4f} (paid){cap}"
+    )
 
     llm = build_llm_client(project.manifest, replay=replay, record=record)
     state = SqbylPaths(project.root).ensure()
@@ -635,34 +810,32 @@ def _annotate(args: list[str]) -> int:
         attributes={"gen_ai.operation.name": "chat", "sqbyl.tables": len(paths)},
     )
 
-    spent, done = 0.0, 0
-    for path in paths:
-        if budget is not None and spent >= budget:
-            left = len(paths) - done
-            print(f"  ⏸ budget ${budget:.2f} reached — {left} table(s) left; re-run to continue")
-            break
-        raw = load_yaml(path.read_text())
-        table = TableSemantics.model_validate(raw)
-        annotation, response = annotate_table(
-            llm,
-            table,
-            model=model,
-            trace_writer=trace_writer,
-            trace_id=run_span.trace_id,
-            parent_span_id=run_span.span_id,
-        )
-        dump_yaml_path(merge_annotation(raw, annotation), path)
-        spent += _meter(
-            project,
-            response.usage,
-            model=model,
-            command="annotate",
-            role="annotator",
-            run_id=run_span.trace_id,
-        )
-        done += 1
-        print(f"  ✓ {path.name}  (table confidence {annotation.confidence:.2f})")
-    trace_writer.write(run_span.end(status="ok"))
+    done, stopped = 0, False
+    with UsageStore(state.usage_db) as store:
+        meter = SpendMeter(budget=budget, store=store, command="annotate")
+        for path in paths:
+            # Live cap: gate each table on the running tally before spending on it.
+            if not _authorize(meter, per_table, auto=auto, label=f"annotate {path.name}"):
+                left = len(paths) - done
+                print(f"  ⏸ {left} table(s) left; re-run `sqbyl annotate` to continue")
+                stopped = True
+                break
+            raw = load_yaml(path.read_text())
+            table = TableSemantics.model_validate(raw)
+            annotation, response = annotate_table(
+                llm,
+                table,
+                model=model,
+                trace_writer=trace_writer,
+                trace_id=run_span.trace_id,
+                parent_span_id=run_span.span_id,
+            )
+            dump_yaml_path(merge_annotation(raw, annotation), path)
+            meter.record(response.usage, model=model, role="annotator", run_id=run_span.trace_id)
+            done += 1
+            print(f"  ✓ {path.name}  (table confidence {annotation.confidence:.2f})")
+        spent = meter.spent
+    trace_writer.write(run_span.end(status="ok" if not stopped else "error"))
     print(f"done — annotated {done}/{len(paths)}, metered ${spent:.4f}")
     return 0
 
@@ -690,9 +863,11 @@ def main(argv: list[str] | None = None) -> int:
         return _review(args[1:])
     if args and args[0] == "coach":
         return _coach(args[1:])
+    if args and args[0] == "cost":
+        return _cost(args[1:])
     print(
         "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, coach, "
-        "schema export, version"
+        "cost, schema export, version"
     )
     return 0
 
