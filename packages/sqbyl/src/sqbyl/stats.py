@@ -15,6 +15,24 @@ import math
 SMALL_N_FLOOR = 30
 
 
+def percentile(values: list[float], p: float) -> float:
+    """The ``p``-th percentile (0–100) via linear interpolation, or 0.0 for an empty list.
+
+    Used for the latency p50/p95 the §7.5 report surfaces. Small-sample percentiles are
+    coarse — a p95 over ~20 questions is really "the worst couple" — but they read from the
+    same per-query latencies the report already has, and the report labels its small samples.
+    """
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (p / 100.0) * (len(ordered) - 1)
+    low = int(rank)
+    high = min(low + 1, len(ordered) - 1)
+    return ordered[low] + (ordered[high] - ordered[low]) * (rank - low)
+
+
 def wilson_interval(successes: int, n: int, *, z: float = 1.96) -> tuple[float, float]:
     """Wilson score interval for a binomial proportion (95% at the default ``z``).
 

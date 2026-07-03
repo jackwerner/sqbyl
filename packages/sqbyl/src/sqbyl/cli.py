@@ -202,6 +202,84 @@ def _cost(args: list[str]) -> int:
     return 0
 
 
+def _report(args: list[str]) -> int:
+    """`sqbyl report [DIR] [--json] [--volume N]` — roll up usage/runs/latency → KpiReport.
+
+    A reporting view over data already captured (spec §7.5): no tokens, no DB query,
+    aggregates only. Dev and held-out test are reported separately, never conflated.
+    """
+    from sqbyl.project import Project
+
+    as_json = "--json" in args
+    volume_opt = _opt(args, "volume")
+    positional = [a for a in args if not a.startswith("-") and a != volume_opt]
+    project = Project.load(positional[0] if positional else ".")
+    volume = int(volume_opt) if volume_opt else None
+    report = project.kpis(volume=volume)
+
+    if as_json:
+        print(report.model_dump_json(indent=2))
+        return 0
+
+    print("▸ sqbyl report — operational KPIs ($0, aggregates only)\n")
+    ue = report.unit_economics
+    print("unit economics (agent / production)")
+    print(
+        f"  $/query ${ue.cost_per_query_usd:.4f} · {ue.tokens_per_query:.0f} tokens/query · "
+        f"cache hit {ue.cache_hit_rate:.0%}"
+    )
+    if ue.judge_cost_per_query_usd:
+        print(
+            f"  + ${ue.judge_cost_per_query_usd:.4f}/query dev-only judge overhead "
+            "(not in production)"
+        )
+    if ue.projected_monthly_usd is not None and ue.volume_per_month is not None:
+        print(
+            f"  projected run-rate ${ue.projected_monthly_usd:,.2f}/mo "
+            f"at {ue.volume_per_month:,} queries/mo"
+        )
+    for q in (report.dev_quality, report.test_quality):
+        if q is None:
+            continue
+        caveat = " — small sample, directional" if q.low_confidence else ""
+        print(f"\nquality — {q.split}")
+        print(
+            f"  accuracy {q.accuracy:.0%} (95% CI {q.accuracy_low:.0%}–{q.accuracy_high:.0%}, "
+            f"n={q.n}){caveat}"
+        )
+        print(f"  manual-review {q.manual_review_rate:.0%} · self-repair {q.self_repair_rate:.0%}")
+    if report.dev_test_gap is not None:
+        print(f"  dev↔test gap {report.dev_test_gap:+.0%} (overfitting signal)")
+        # The gap is only a valid overfitting signal if both splits ran on the same agent.
+        dev_agent = (report.dev_quality.models if report.dev_quality else {}).get("agent")
+        test_agent = (report.test_quality.models if report.test_quality else {}).get("agent")
+        if dev_agent and test_agent and dev_agent != test_agent:
+            print(
+                f"  ⚠ dev ({dev_agent}) and test ({test_agent}) ran different agent models — "
+                "the gap conflates a model change with overfitting; re-score on one model."
+            )
+    if report.performance is not None:
+        p = report.performance
+        perf_caveat = " — small sample, directional" if p.low_confidence else ""
+        print(
+            f"\nperformance\n  latency p50 {p.latency_p50_ms:.0f}ms · "
+            f"p95 {p.latency_p95_ms:.0f}ms{perf_caveat}"
+        )
+    gap = report.readiness_gap
+    status = ""
+    if gap is not None:
+        status = " · reached (CI clears target)" if report.readiness_met else f" · {gap:.0%} to go"
+    print(
+        f"\nprocess\n  readiness target {report.readiness_target:.0%}{status} · "
+        f"{report.round_trips_to_ship} dev run(s) recorded"
+    )
+    print(
+        f"\nlifetime (all roles + commands)  ${report.total_cost_usd:.4f} · "
+        f"{report.total_tokens:,} tokens (from usage.db)"
+    )
+    return 0
+
+
 def _ask(args: list[str]) -> int:
     """`sqbyl ask "question" [DIR] [--replay PATH]` — answer one question end-to-end."""
     from sqbyl.estimates import ask_estimate
@@ -1048,9 +1126,11 @@ def main(argv: list[str] | None = None) -> int:
         return _cost(args[1:])
     if args and args[0] == "init":
         return _init(args[1:])
+    if args and args[0] == "report":
+        return _report(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, schema export, version"
+        "coach, cost, report, schema export, version"
     )
     return 0
 

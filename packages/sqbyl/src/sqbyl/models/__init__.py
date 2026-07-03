@@ -39,6 +39,12 @@ from sqbyl.models.judges import (
     NO_GOLD_JUDGES,
     JudgeVerdict,
 )
+from sqbyl.models.kpis import (
+    KpiReport,
+    PerformanceKpis,
+    QualityKpis,
+    UnitEconomics,
+)
 from sqbyl.models.manifest import (
     MODEL_ROLES,
     AutomationConfig,
@@ -97,8 +103,11 @@ __all__ = [
     "ExecutionEvidence",
     "JudgeAgreement",
     "JudgeVerdict",
+    "KpiReport",
     "ModelConfig",
     "OverfittingSignal",
+    "PerformanceKpis",
+    "QualityKpis",
     "QuestionResult",
     "ReadinessSignal",
     "RunDiff",
@@ -106,5 +115,6 @@ __all__ = [
     "ScorerResult",
     "SqbylManifest",
     "SynthResult",
+    "UnitEconomics",
     "Verdict",
 ]
