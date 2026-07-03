@@ -17,6 +17,7 @@ from sqbyl.yamlio import load_yaml
 from sqbyl_runtime.db import Database
 
 if TYPE_CHECKING:
+    from sqbyl.models.kpis import KpiReport
     from sqbyl.models.runs import ScoredRun
     from sqbyl_runtime.llm.base import LLMClient
 
@@ -106,3 +107,14 @@ class Project:
         if persist:
             save_run(paths, run)
         return run
+
+    def kpis(self, *, volume: int | None = None) -> KpiReport:
+        """Roll ``.sqbyl/`` (usage + runs + latencies) into a :class:`KpiReport` (spec §7.5).
+
+        A pure reporting view: spends no tokens, opens no DB connection, and emits aggregates
+        only (§13). ``volume`` (queries/month) adds a projected run-rate. Dev and held-out
+        test are reported separately, never conflated.
+        """
+        from sqbyl.kpis import build_report
+
+        return build_report(self, volume=volume)

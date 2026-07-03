@@ -92,18 +92,26 @@ def test_annotate_cli_writes_descriptions_and_meters(
 def test_annotate_cli_budget_caps_the_loop(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Realistic per-call usage so actual spend ≈ the estimate the live cap reserves
+    # against (a table costs ~$0.05 on opus); a mid-range budget admits exactly one.
+    from sqbyl_runtime.llm.base import Usage
+
+    usage = Usage(input_tokens=1500, output_tokens=400)
     mock = MockLLMClient(
         [
-            structured_reply({"description": d, "synonyms": [], "confidence": 0.9, "columns": []})
+            structured_reply(
+                {"description": d, "synonyms": [], "confidence": 0.9, "columns": []}, usage=usage
+            )
             for d in ("c", "o")
         ]
     )
     monkeypatch.setattr("sqbyl.llm.build_llm_client", lambda *a, **k: mock)
 
-    # A tiny budget lets the first table through, then stops before the second.
-    code = main(["annotate", str(project), "--budget", "0.0000001"])
+    # --auto hard-stops at the cap (no prompt); ~$0.08 admits the first table (~$0.05)
+    # then the pre-dispatch guard refuses the second (~$0.05 more would exceed).
+    code = main(["annotate", str(project), "--auto", "--budget", "0.08"])
     assert code == 0
     out = capsys.readouterr().out
-    assert "budget $0.00 reached" in out
+    assert "budget $0.08 reached" in out
     assert mock.call_count == 1  # the loop stopped; the second table never ran
     assert len(_usage_rows(project)) == 1

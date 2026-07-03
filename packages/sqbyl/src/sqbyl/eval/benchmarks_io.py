@@ -73,6 +73,13 @@ def _read_dev_set_lenient(project: Project) -> list[BenchmarkQuestion]:
     return _read_set(project, Split.dev)
 
 
+def dev_set_size(project: Project) -> int:
+    """How many dev questions exist (0 before the first synth) — the **public**, dev-only
+    surface for callers that just need the count (e.g. `sqbyl init` deciding whether to
+    synthesize). Like the rest of this module's public API it cannot reach ``test.yaml``."""
+    return len(_read_dev_set_lenient(project))
+
+
 def _dump_questions(questions: list[BenchmarkQuestion]) -> str:
     """Serialize benchmark questions to a YAML sequence, dropping empty/default fields."""
     data = [q.model_dump(exclude_none=True, exclude_defaults=True) for q in questions]

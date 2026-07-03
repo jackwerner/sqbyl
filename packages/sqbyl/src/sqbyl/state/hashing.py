@@ -54,3 +54,16 @@ def content_hash(project_root: str | Path) -> str:
     """Stable content hash of the whole project (``sha256:...``)."""
     root = Path(project_root)
     return _hash_files(root, tracked_files(root))
+
+
+def file_digest(path: str | Path) -> str:
+    """Content hash of a single file (``sha256:...``), path-independent.
+
+    Used by ``sqbyl init`` to re-orchestrate *only what changed* (spec §5.5, Phase 7.2): a
+    semantics file's digest is recorded when it's annotated, so a later re-run re-annotates
+    a table when — and only when — its file content moved. Unlike :func:`content_hash` this
+    hashes bytes alone (not the relative path), so it's stable across a rename.
+    """
+    digest = hashlib.sha256()
+    digest.update(Path(path).read_bytes())
+    return "sha256:" + digest.hexdigest()

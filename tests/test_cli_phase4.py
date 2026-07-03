@@ -75,7 +75,8 @@ def test_synth_cli_grounds_meters_and_queues(
 def test_synth_cli_refuses_when_estimate_exceeds_budget(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code = main(["synth", str(project), "--n", "2", "--budget", "0.0001"])
+    # --auto hard-stops when the up-front estimate exceeds the cap (guided would pause-and-ask).
+    code = main(["synth", str(project), "--n", "2", "--auto", "--budget", "0.0001"])
     assert code == 1
     out = capsys.readouterr().out
     assert "exceeds budget" in out
