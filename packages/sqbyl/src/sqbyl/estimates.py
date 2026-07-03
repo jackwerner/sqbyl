@@ -19,7 +19,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqbyl.eval.benchmarks_io import Split
 from sqbyl.models.judges import GOLD_MISMATCH_JUDGES
 from sqbyl_runtime.cost import CostEstimate, EstimateItem
 
@@ -42,10 +41,13 @@ def _count_tables(project: Project) -> int:
     return len(sorted(project.semantics_dir.glob("*.yaml")))
 
 
-def _count_questions(project: Project, split: Split) -> int:
-    from sqbyl.eval.heldout import load_for_eval
+def _count_dev_questions(project: Project) -> int:
+    # Dev-only: the estimator must not reach the held-out door (invariant 3). `sqbyl eval`
+    # sizes its estimate off the dev count; test-split estimates would over/under-read
+    # slightly, which is acceptable for an estimate and keeps this module dev-safe.
+    from sqbyl.eval.benchmarks_io import dev_set_size
 
-    return len(load_for_eval(project, split))
+    return dev_set_size(project)
 
 
 def ask_estimate(model: str, *, self_repair_attempts: int = 0) -> CostEstimate:
@@ -163,7 +165,7 @@ def estimate_for_command(project: Project, command: str, *, n: int = 20) -> Cost
         judge = manifest.for_role("judge") if project.manifest.automation.auto_judge else None
         return eval_estimate(
             manifest.for_role("agent"),
-            questions=_count_questions(project, Split.dev),
+            questions=_count_dev_questions(project),
             judge_model=judge,
             self_repair_attempts=repairs,
         )

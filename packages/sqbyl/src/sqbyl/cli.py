@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING
 from sqbyl import __version__
 
 if TYPE_CHECKING:
+    from sqbyl.init import EnrichmentResult, FreePass, InitPlan
     from sqbyl.project import Project
     from sqbyl_runtime.llm.base import Usage
 
@@ -840,6 +841,186 @@ def _annotate(args: list[str]) -> int:
     return 0
 
 
+def _init(args: list[str]) -> int:
+    """`sqbyl init [DIR] [--auto --budget $N] [--dry-run] [--model M] [--select STEPS] [--n N]`.
+
+    The guided push (spec §5.5): a free deterministic pass ($0), then a costed plan you
+    confirm, then orchestrated paid enrichment ending in the attention queue. ``--auto`` runs
+    it headless (``--budget`` required); ``--dry-run`` shows the plan and spends nothing;
+    ``--select`` keeps a subset of ``annotate,synth,eval``; guided runs prompt to proceed,
+    swap to a cheaper model (``m``), pick steps (``s``), or bail (``n``).
+    """
+    from datetime import datetime
+
+    from sqbyl import init as initmod
+    from sqbyl.llm import build_llm_client
+    from sqbyl.orchestrator import Orchestrator
+    from sqbyl.project import Project
+    from sqbyl_runtime.cost import SpendMeter
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.usage import UsageStore
+
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
+    replay, record = _opt(args, "replay"), _opt(args, "record")
+    model_opt, select_opt = _opt(args, "model"), _opt(args, "select")
+    n_opt, as_of_opt = _opt(args, "n"), _opt(args, "as-of")
+    consumed = {replay, record, model_opt, select_opt, n_opt, as_of_opt}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+
+    try:
+        as_of = datetime.fromisoformat(as_of_opt) if as_of_opt else None
+    except ValueError:
+        print(f"invalid --as-of {as_of_opt!r}; expected an ISO datetime like 2026-06-30")
+        return 2
+    synth_n = int(n_opt) if n_opt else 20
+    model = model_opt or project.manifest.model.default
+    steps = tuple(s.strip() for s in select_opt.split(",")) if select_opt else initmod.STEPS
+    if any(s not in initmod.STEPS for s in steps):
+        print(f"--select must be a comma list of {','.join(initmod.STEPS)}")
+        return 2
+
+    # ── Phase 1: the free pass ($0) ──
+    print("▸ sqbyl init — free pass (read-only SQL, $0)")
+    free = initmod.run_free_pass(project)
+    print(
+        f"  ✓ {free.n_tables} table(s), {free.n_columns} column(s) profiled · "
+        f"{free.joins} join candidate(s) ({free.ambiguous_joins} ambiguous)"
+    )
+
+    plan = initmod.build_plan(project, free, model=model, steps=steps, synth_n=synth_n, as_of=as_of)
+    if not plan.has_paid_work:
+        print("  ✓ nothing to enrich — the project is already up to date ($0)")
+        return 0
+
+    print("\n  Ready to enrich with Claude. Here's the plan and the estimate:\n")
+    print(plan.estimate.render(indent="    "))
+
+    if dry_run:
+        print("\n(dry run — no API calls made)")
+        return 0
+
+    # ── Confirm (guided prompts; --auto proceeds headless within its required budget) ──
+    if not auto:
+        confirmed = _confirm_init_plan(project, free, plan, synth_n=synth_n, steps=steps)
+        if confirmed is None:
+            print("  aborted — nothing spent")
+            return 0
+        plan = confirmed
+        if not plan.has_paid_work:
+            print("  no steps selected — nothing spent")
+            return 0
+
+    # ── Phase 2: orchestrated enrichment, live-metered ──
+    print("\n▸ enriching (metering live)…")
+    paths = SqbylPaths(project.root).ensure()
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    with UsageStore(paths.usage_db) as store:
+        meter = SpendMeter(budget=budget, store=store, command="init")
+        result = initmod.enrich(
+            project,
+            plan,
+            llm=llm,
+            meter=meter,
+            orchestrator=Orchestrator(concurrency=4),
+            authorize=lambda m, cost, label: _authorize(m, cost, auto=auto, label=label),
+            schema_fingerprint=free.schema_fingerprint,
+            replay=replay,
+            record=record,
+            as_of=as_of,
+        )
+    return _report_init_arrival(result)
+
+
+def _confirm_init_plan(
+    project: Project,
+    free: FreePass,
+    plan: InitPlan,
+    *,
+    synth_n: int,
+    steps: tuple[str, ...],
+) -> InitPlan | None:
+    """The guided ``[Y]es / [s]elect steps / [m]odel / [n]o`` menu (spec §5.5). None = bail."""
+    from sqbyl import init as initmod
+
+    current = plan
+    while True:
+        choice = (
+            input("\n  Proceed? [Y]es · [s]elect steps · [m]odel (cheaper) · [n]o: ")
+            .strip()
+            .lower()
+        )
+        if choice in ("", "y", "yes"):
+            return current
+        if choice in ("n", "no"):
+            return None
+        if choice.startswith("m"):
+            new_model = input("    model id (e.g. claude-haiku-4-5-20251001): ").strip()
+            if new_model:
+                current = initmod.build_plan(
+                    project, free, model=new_model, steps=steps, synth_n=synth_n
+                )
+                print(f"\n  Re-estimated on {new_model}:\n")
+                print(current.estimate.render(indent="    "))
+        elif choice.startswith("s"):
+            picked = input(f"    steps to keep ({','.join(initmod.STEPS)}): ").strip()
+            kept = tuple(s.strip() for s in picked.split(",") if s.strip() in initmod.STEPS)
+            current = initmod.build_plan(
+                project, free, model=current.model, steps=kept or (), synth_n=synth_n
+            )
+            print(f"\n  Plan for [{', '.join(kept) or 'none'}]:\n")
+            print(current.estimate.render(indent="    "))
+        else:
+            print("    (unrecognized — y to proceed, n to bail)")
+
+
+def _report_init_arrival(result: EnrichmentResult) -> int:
+    """Print the arrival summary: what ran, the readiness meter, and the leverage queue."""
+    print(f"\n▸ enrichment complete — metered ${result.spent_usd:.4f}")
+    if result.annotated:
+        print(f"  ✓ annotated {result.annotated} table(s)")
+    for label, err in result.annotate_failures:
+        print(f"  ⚠ {label}: {err.splitlines()[0]} (surfaced as a card)")
+    if result.survivors:
+        # Be explicit that this is an automatic, reversible action on machine-authored gold —
+        # the human confirms (or edits) it in `sqbyl review`; nothing here is final.
+        print(
+            f"  ✓ auto-accepted {result.survivors} unreviewed question(s) into the dev set "
+            "→ confirm the gold in `sqbyl review`"
+        )
+    if result.run is not None:
+        r = result.run
+        # The dev set is self-generated and its gold isn't human-confirmed yet, so this is a
+        # provisional agreement rate, not a validated accuracy (ml-systems / responsible-ai).
+        provisional = " (provisional — gold self-generated, unreviewed)" if result.survivors else ""
+        line = f"  ✓ baseline eval: {r.n_correct}/{r.total} ({r.accuracy:.0%}){provisional}"
+        if result.queue is not None and result.queue.readiness.low_confidence:
+            lo, hi = result.queue.readiness.accuracy_low, result.queue.readiness.accuracy_high
+            line += (
+                f" · small sample (n={r.total}, 95% CI {lo:.0%}–{hi:.0%} — treat as directional)"
+            )
+        print(line)
+        print(f"    {r.n_manual_review} row(s) to review")
+    if result.stopped:
+        print("  ⏸ stopped at the budget — re-run `sqbyl init` to continue where it left off")
+
+    queue = result.queue
+    if queue is not None:
+        print(f"\n  readiness: {queue.readiness.headline()}")
+        if queue.auto_applied:
+            # Auto-apply gates on an as-yet-uncalibrated confidence threshold — say so, and
+            # point at the one-click undo.
+            print(
+                f"  auto-applied {len(queue.auto_applied)} high-confidence decision(s) "
+                "(uncalibrated threshold; undo any in `sqbyl review`)"
+            )
+        print(f"  {len(queue.queue)} decision(s) need you → run `sqbyl review`")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args and args[0] in {"-V", "--version", "version"}:
@@ -865,9 +1046,11 @@ def main(argv: list[str] | None = None) -> int:
         return _coach(args[1:])
     if args and args[0] == "cost":
         return _cost(args[1:])
+    if args and args[0] == "init":
+        return _init(args[1:])
     print(
-        "sqbyl: commands — introspect, profile, annotate, ask, eval, synth, review, coach, "
-        "cost, schema export, version"
+        "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
+        "coach, cost, schema export, version"
     )
     return 0
 

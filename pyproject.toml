@@ -81,9 +81,9 @@ forbidden_modules = ["sqbyl"]
 # that imports `heldout` or the `runner` **directly** is still caught — the contract fails
 # closed on an actual violation while permitting the sanctioned eval door.
 [[tool.importlinter.contracts]]
-name = "the dev-loop (synth/console/coach) cannot read the held-out test set"
+name = "the dev-loop (synth/console/coach/init) cannot read the held-out test set"
 type = "forbidden"
-source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach"]
+source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach", "sqbyl.init"]
 forbidden_modules = ["sqbyl.eval.heldout"]
 ignore_imports = ["sqbyl.project -> sqbyl.eval.runner"]
 
