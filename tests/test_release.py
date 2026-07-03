@@ -20,10 +20,10 @@ from sqbyl.eval.report import save_run
 from sqbyl.models import QuestionResult, ScoredRun, Verdict
 from sqbyl.models.judges import ALL_JUDGES
 from sqbyl.project import Project
-from sqbyl.projectfiles import load_knowledge
+from sqbyl.projectfiles import load_knowledge, load_semantics
 from sqbyl.release import ReleaseError, build_release, release_filename
 from sqbyl_runtime.cost import price_usage
-from sqbyl_runtime.fingerprint import fingerprint_knowledge, fingerprint_semantics
+from sqbyl_runtime.fingerprint import fingerprint_knowledge, live_schema_fingerprint
 from sqbyl_runtime.llm.base import Usage
 from sqbyl_runtime.models import ReleaseArtifact
 from sqbyl_runtime.schema import release_json_schema
@@ -36,6 +36,12 @@ def _brain_fp(project: Project) -> str:
     """The fingerprint of the project's current brain — what a real `eval test` run stamps,
     so the staleness guard sees a matching (verified) scorecard."""
     return fingerprint_knowledge(load_knowledge(project))
+
+
+def _schema_fp(project: Project) -> str:
+    """The live DB schema fingerprint an eval run stamps — the one load() recomputes."""
+    with project.connect() as db:
+        return live_schema_fingerprint(db, load_semantics(project))
 
 
 def _q(qid: str, verdict: Verdict, *, latency: float = 100.0) -> QuestionResult:
@@ -66,19 +72,22 @@ def project(
     paths = SqbylPaths(dst).ensure()
 
     fp = _brain_fp(project)
+    schema_fp = _schema_fp(project)
     dev = ScoredRun(
         run_id="dev_run",
         split="dev",
         models={"agent": _MODEL, "judge": _MODEL},
         knowledge_fingerprint=fp,
+        schema_fingerprint=schema_fp,
         results=[_q(f"d{i}", Verdict.correct) for i in range(4)],
     )
-    # The held-out run is stamped with the current brain — a *verified* scorecard.
+    # The held-out run is stamped with the current brain + live schema — a *verified* scorecard.
     test = ScoredRun(
         run_id="test_run",
         split="test",
         models={"agent": _MODEL},
         knowledge_fingerprint=fp,
+        schema_fingerprint=schema_fp,
         results=[
             _q("t1", Verdict.correct, latency=100.0),
             _q("t2", Verdict.correct, latency=200.0),
@@ -186,12 +195,14 @@ def test_release_validates_against_the_generated_schema(project: Project) -> Non
 
 
 def test_release_carries_the_schema_fingerprint_and_all_judges(project: Project) -> None:
-    from sqbyl.projectfiles import load_semantics
-
     release = build_release(project, "v1")
-    # The fingerprint the runtime will recompute at load() to warn on a renamed table.
-    assert release.schema_fingerprint == fingerprint_semantics(load_semantics(project))
-    assert release.schema_fingerprint.startswith("sha256:")
+    # The release carries the **live** schema fingerprint the held-out run recorded — the one
+    # the runtime recomputes at load() to warn on a renamed table (not the YAML-derived hash,
+    # which would false-positive: the dogfood YAML says `text` where DuckDB renders `varchar`).
+    assert release.schema_fingerprint == _schema_fp(project)
+    assert release.schema_fingerprint is not None and release.schema_fingerprint.startswith(
+        "sha256:"
+    )
     # Every judge prompt is embedded, so a shipped agent's judging is self-describing.
     assert set(release.judges) == set(ALL_JUDGES)
     assert all(release.judges[name].prompt.strip() for name in ALL_JUDGES)

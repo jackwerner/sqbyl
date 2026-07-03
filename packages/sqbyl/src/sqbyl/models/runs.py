@@ -156,6 +156,10 @@ class ScoredRun(SqbylModel):
     # this, refusing to stamp a held-out number the shipped files didn't earn (spec §11).
     # ``None`` on a run that predates fingerprinting (or a hand-built one in tests).
     knowledge_fingerprint: str | None = None
+    # A fingerprint of the **live database** this run scored against, computed from the DB's
+    # own inspector (not the YAML), so it's directly comparable to the one the runtime
+    # recomputes at load() to warn on schema drift (spec §11). ``None`` = unstamped.
+    schema_fingerprint: str | None = None
     results: list[QuestionResult] = Field(default_factory=list)
 
     # --- aggregates: computed from results so they can never drift (the quality KPIs

@@ -331,6 +331,10 @@ def _release(args: list[str]) -> int:
             f"(n={sc.judge_human_agreement_n}, reviewed rows only)"
         )
     print(f"  blessed on {sc.blessed_with_models or '{}'} · schema {release.schema_fingerprint}")
+    # `release` never connects (it's $0), so the schema fingerprint is a snapshot from the last
+    # `eval test` — a DB schema change since then, with files unchanged, is invisible here and
+    # only surfaces as a load-time warning. Nudge the user to eval immediately before releasing.
+    print("  (schema fingerprint is from the last `eval test`; re-run it if the DB changed since)")
     if sc.knowledge_fingerprint is None:
         print(
             "  ⚠ scorecard provenance unverified — the held-out eval predates fingerprinting; "

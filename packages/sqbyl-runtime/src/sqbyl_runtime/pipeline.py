@@ -66,6 +66,9 @@ class AgentResult(BaseModel):
     usage: Usage = Field(default_factory=Usage)
     latency_ms: float = 0.0
     trace_id: str = ""
+    # The model that produced this answer — stamped so a production caller logging the result
+    # has per-answer provenance (which model), not just the config that was live at load time.
+    model: str = ""
 
     @property
     def ok(self) -> bool:
@@ -144,6 +147,7 @@ def ask(
                 usage=total_usage,
                 latency_ms=_elapsed_ms(started),
                 trace_id=trace_id,
+                model=model,
             )
             _finish(trace_writer, run_span, status="ok")
             return result
@@ -168,6 +172,7 @@ def ask(
         usage=total_usage,
         latency_ms=_elapsed_ms(started),
         trace_id=trace_id,
+        model=model,
     )
 
 
@@ -197,6 +202,7 @@ def _success(
     usage: Usage,
     latency_ms: float,
     trace_id: str,
+    model: str,
 ) -> AgentResult:
     # Cite only assets that were actually offered, intersect with what the model claims.
     cited = [a for a in gen.used_assets if a in context.offered_assets]
@@ -213,6 +219,7 @@ def _success(
         usage=usage,
         latency_ms=latency_ms,
         trace_id=trace_id,
+        model=model,
     )
 
 

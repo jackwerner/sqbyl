@@ -33,7 +33,7 @@ from sqbyl.projectfiles import (
     load_trusted_assets,
 )
 from sqbyl.stats import percentile
-from sqbyl_runtime.fingerprint import fingerprint_knowledge, fingerprint_semantics
+from sqbyl_runtime.fingerprint import fingerprint_knowledge
 from sqbyl_runtime.models import (
     JudgePrompt,
     ReleaseArtifact,
@@ -75,15 +75,18 @@ def build_release(
     # The fingerprint of the brain we're about to ship — the scorecard's held-out run must
     # have scored *this* brain, or its accuracy is a number some other version earned.
     shipped_fingerprint = fingerprint_knowledge(load_knowledge(project))
-    scorecard = _scorecard(project, shipped_fingerprint=shipped_fingerprint)
+    test = _verified_test_run(project, shipped_fingerprint=shipped_fingerprint)
     prompts = judge_prompts if judge_prompts is not None else _default_judge_prompts()
     return ReleaseArtifact(
         name=project.manifest.name,
         tag=tag,
         created_at=created_at or datetime.now(UTC),
-        scorecard=scorecard,
+        scorecard=_scorecard(project, test),
         dialect=project.manifest.database.dialect,
-        schema_fingerprint=fingerprint_semantics(semantics),
+        # The **live** schema fingerprint the held-out run recorded — computed from the DB's
+        # own inspector, so load() can recompute it identically and warn only on real drift.
+        # (``None`` on a legacy run; the YAML-derived hash would false-positive on healthy DBs.)
+        schema_fingerprint=test.schema_fingerprint,
         semantics=semantics,
         instructions=load_instructions(project),
         examples=load_examples(project),
@@ -95,18 +98,16 @@ def build_release(
     )
 
 
-def _scorecard(project: Project, *, shipped_fingerprint: str) -> Scorecard:
-    """The scorecard that justifies promotion (spec §11): the held-out **test** accuracy
-    as the headline, with the latest **dev** number beside it so a reviewer sees the gap.
+def _verified_test_run(project: Project, *, shipped_fingerprint: str) -> ScoredRun:
+    """The latest held-out **test** run, after proving it scored the brain being shipped.
 
-    Refuses a **stale** scorecard — a held-out run that scored a different brain than the
-    one shipping (``shipped_fingerprint``) — so the headline number can always be tied to
-    the files in the release. A run predating fingerprinting (``knowledge_fingerprint`` is
-    ``None``) can't be verified either way; it's allowed through, and the resulting
-    scorecard carries a ``None`` fingerprint so the CLI can flag the number as unverified.
+    Refuses a **stale** scorecard — a held-out run that scored a different brain than the one
+    shipping (``shipped_fingerprint``) — so the headline number can always be tied to the
+    files in the release. A run predating fingerprinting (``knowledge_fingerprint`` is
+    ``None``) can't be verified either way; it's allowed through, and the resulting scorecard
+    carries a ``None`` fingerprint so the CLI can flag the number as unverified.
     """
-    paths = SqbylPaths(project.root)
-    test = _latest(load_runs(paths, split="test"))
+    test = _latest(load_runs(SqbylPaths(project.root), split="test"))
     if test is None:
         raise ReleaseError(
             "no held-out eval to headline — run `sqbyl eval test` before releasing "
@@ -118,7 +119,13 @@ def _scorecard(project: Project, *, shipped_fingerprint: str) -> Scorecard:
             "you're releasing (its context files have changed since) — re-run `sqbyl eval test` "
             "so the scorecard's accuracy is the one these files actually earned (spec §11)"
         )
-    dev = _latest(load_runs(paths, split="dev"))
+    return test
+
+
+def _scorecard(project: Project, test: ScoredRun) -> Scorecard:
+    """The scorecard that justifies promotion (spec §11): the held-out **test** accuracy as
+    the headline, with the latest **dev** number beside it so a reviewer sees the gap."""
+    dev = _latest(load_runs(SqbylPaths(project.root), split="dev"))
     latencies = [r.latency_ms for r in test.results]
     low, high = test.accuracy_ci()
     # Judge agreement is scoped to the **headline split** — a test-set release must not
