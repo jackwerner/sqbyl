@@ -1880,7 +1880,7 @@ wheels = [
 
 [[package]]
 name = "sqbyl"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "packages/sqbyl" }
 dependencies = [
     { name = "fastapi" },
@@ -1901,7 +1901,7 @@ requires-dist = [
 
 [[package]]
 name = "sqbyl-runtime"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "packages/sqbyl-runtime" }
 dependencies = [
     { name = "anthropic" },

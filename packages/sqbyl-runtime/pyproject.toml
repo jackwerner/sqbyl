@@ -1,11 +1,22 @@
 [project]
 name = "sqbyl-runtime"
-version = "0.0.0"
+version = "0.1.0"
 description = "The minimal, dependency-light sqbyl runtime: load a release + ask() + structured logging."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Jack Werner" }]
+keywords = ["text-to-sql", "sql", "llm", "claude", "anthropic", "agent"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.7,<3",
     "anthropic>=0.116.0",
@@ -27,6 +38,11 @@ bigquery = ["sqlalchemy-bigquery>=1.9"]
 # Export a release as a LangChain tool (sqbyl_runtime.langchain_tool). Optional — the MCP
 # and plain-callable export shapes need no extra dependency.
 langchain = ["langchain-core>=0.3"]
+
+[project.urls]
+Homepage = "https://github.com/jackwerner/sqbyl"
+Repository = "https://github.com/jackwerner/sqbyl"
+Issues = "https://github.com/jackwerner/sqbyl/issues"
 
 [build-system]
 requires = ["hatchling"]

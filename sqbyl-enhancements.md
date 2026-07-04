@@ -18,8 +18,10 @@ Newest first. Items marked ✅ below are done; ◐ = partially landed.
 - ◐ **§5.1 dependency & vulnerability management** — `pip-audit` (blocking) + Dependabot shipped ([PR #12](https://github.com/jackwerner/sqbyl/pull/12)). CodeQL held (private repo needs Advanced Security; free once public); `bandit`, SBOM, SHA-pinning still open.
 
 - ✅ **Pre-public secret/history safety scan** — full 43-commit history scanned: no real API keys (only `sk-ant-...` doc placeholders), no hardcoded passwords/secrets/tokens, no credentials in connection strings, cassettes carry no auth material, `.sqbyl/` local state was never committed, and the one committed data file (`fixtures/orders.duckdb`) is synthetic seeded data (`random.Random(1729)`). `.gitignore` covers secrets/state going forward. **Repo is clean to make public** whenever you decide to; doing so also lights up CodeQL for free (§5.1).
+- ✅ **Dependabot triage** — merged the two GitHub Actions bumps and the two dependency-floor bumps (`anthropic`→0.116, `fastapi`→0.139, `import-linter`→2.13, `psycopg`→3.3.4); full gate stayed green.
+- ◐ **§3.1 versioning + PyPI (in-repo work)** — both packages at `0.1.0`, lockstep pin, `py.typed`, PyPI metadata, `CHANGELOG.md`, and a Trusted-Publishing `release.yml`. Remaining is PyPI-side setup + a live-API smoke test before tagging `v0.1.0` (see §3.1).
 
-**Next up (candidates):** the public flip itself (your call — repo is secret-clean); versioning + PyPI (§3.1); `sqbyl reset` (§4.1); README enterprise overhaul (§1.2).
+**Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); `sqbyl reset` (§4.1); README enterprise overhaul (§1.2); Bedrock/Vertex + `base_url` provider support (§2.2).
 
 ---
 
@@ -97,7 +99,10 @@ Difficulty, tiered by target:
 
 ## 3. Packaging, versioning & distribution
 
-### 3.1 When to start versioning + how to get onto PyPI / `uv` — **M, P0-for-1.0**
+### 3.1 When to start versioning + how to get onto PyPI / `uv` — **M, P0-for-1.0** — ◐ in-repo work done
+> **Status (in-repo, done):** both packages bumped to `0.1.0`; `sqbyl` pins `sqbyl-runtime==0.1.0` (lockstep, verified in wheel metadata); `py.typed` markers added so downstream type-checkers see the packages' types; PyPI metadata (keywords, classifiers, project URLs); `CHANGELOG.md` (Keep-a-Changelog); a Trusted-Publishing release workflow (`.github/workflows/release.yml`) that builds both and publishes on a `v*` tag. Both dists pass `twine check`.
+> **Still needs a human (PyPI-side):** (1) reserve `sqbyl` + `sqbyl-runtime` on PyPI; (2) register a Trusted Publisher for each package (this repo, workflow `release.yml`, environment `pypi`); (3) do a live-API smoke test of the real Anthropic client before the first tag (CI can't — mock/replay only), given the recent `anthropic` floor bump. Then push a `v0.1.0` tag to publish.
+
 Both packages sit at `version = "0.0.0"` and the README says "not yet published." Recommendation:
 - **Start versioning now, at `0.1.0`**, using SemVer, the moment we're willing to let anyone `pip install` it. Phases 0–9 being complete is the natural trigger — the CLI surface and file formats are stable enough to name.
 - **The two packages must version in lockstep at first.** `sqbyl` depends on `sqbyl-runtime`; pin `sqbyl-runtime==<same>` (or a compatible-release `~=`) so a `sqbyl` install can't pull an incompatible runtime. Publish both from one release process.
