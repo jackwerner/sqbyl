@@ -20,7 +20,7 @@ dependencies = [
 # (a hard dep above); SQLite needs no driver (Python stdlib). Install the extra for the
 # dialect you target, e.g. `pip install sqbyl-runtime[postgres]`. The dialect seam raises
 # a matching install hint when a driver is missing (db/dialects.py).
-postgres = ["psycopg[binary]>=3.1"]
+postgres = ["psycopg[binary]>=3.3.4"]
 mysql = ["pymysql>=1.1"]
 snowflake = ["snowflake-sqlalchemy>=1.5"]
 bigquery = ["sqlalchemy-bigquery>=1.9"]
