@@ -1330,6 +1330,87 @@ def _report_init_arrival(result: EnrichmentResult) -> int:
     return 0
 
 
+def _serve(args: list[str]) -> int:
+    """`sqbyl serve [DIR] [--host H] [--port N] [--budget $X]` — local chat over the project."""
+    from sqbyl.project import Project
+    from sqbyl.serve import ChatServer, project_endpoint
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    host = _opt(args, "host") or "127.0.0.1"
+    port = int(_opt(args, "port") or "8765")
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, _auto, _dry = budget_parse
+    positional = [a for a in args if not a.startswith("-")]
+    # Drop values consumed by --host/--port/--budget so a bare DIR is what remains.
+    consumed = {host, str(port)} | ({str(budget)} if budget is not None else set())
+    positional = [p for p in positional if p not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    endpoint = project_endpoint(project)
+    chat = ChatServer(endpoint, paths=SqbylPaths(project.root), budget=budget)
+    return _serve_forever(chat, host=host, port=port, budget=budget)
+
+
+def _run(args: list[str]) -> int:
+    """`sqbyl run <release.json> --db URL --model M [--host] [--port] [--budget] [--root DIR]`."""
+    from pathlib import Path
+
+    from sqbyl.serve import ChatServer, release_endpoint
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    positional = [a for a in args if not a.startswith("-")]
+    db = _opt(args, "db")
+    model = _opt(args, "model")
+    root = _opt(args, "root") or "."
+    host = _opt(args, "host") or "127.0.0.1"
+    port = int(_opt(args, "port") or "8765")
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, _auto, _dry = budget_parse
+    known = {db, model, root, host, str(port)} | ({str(budget)} if budget is not None else set())
+    rel = [p for p in positional if p not in known]
+    if not rel or db is None or model is None:
+        print("usage: sqbyl run <release.json> --db URL --model MODEL [--port N] [--budget $X]")
+        return 2
+    endpoint = release_endpoint(rel[0], db=db, model=model, project_root=root)
+    chat = ChatServer(endpoint, paths=SqbylPaths(Path(root)), budget=budget)
+    return _serve_forever(chat, host=host, port=port, budget=budget)
+
+
+def _serve_forever(chat: object, *, host: str, port: int, budget: float | None) -> int:
+    """Start the HTTP server and block until interrupted; shared by serve and run."""
+    from sqbyl.serve import ChatServer, is_local_host, make_server, price_usage_estimate
+
+    assert isinstance(chat, ChatServer)
+    per_call = price_usage_estimate(chat.endpoint.model)
+    server = make_server(chat, host=host, port=port)
+    print(f"▸ sqbyl serving {chat.endpoint.label} on http://{host}:{port}")
+    print(
+        f"  each question is a paid call (~${per_call:.4f} est on {chat.endpoint.model}), "
+        f"metered to .sqbyl/usage.db"
+        + (f" · session cap ${budget:.2f}" if budget is not None else "")
+    )
+    if not is_local_host(host):
+        # Not hardened: no auth, no TLS, no rate limiting. Binding off-localhost exposes the
+        # user's database to anyone who can reach the port (spec §9.2).
+        print(
+            f"  ⚠ bound to {host} (not localhost): this server has NO auth and is not hardened — "
+            "do not expose it on an untrusted network."
+        )
+    print("  press Ctrl-C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n▸ stopping…")
+    finally:
+        server.shutdown()
+        server.server_close()
+        chat.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args and args[0] in {"-V", "--version", "version"}:
@@ -1363,9 +1444,13 @@ def main(argv: list[str] | None = None) -> int:
         return _release(args[1:])
     if args and args[0] == "optimize":
         return _optimize(args[1:])
+    if args and args[0] == "serve":
+        return _serve(args[1:])
+    if args and args[0] == "run":
+        return _run(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, release, optimize, schema export, version"
+        "coach, cost, report, release, optimize, serve, run, schema export, version"
     )
     return 0
 

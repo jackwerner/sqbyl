@@ -33,6 +33,11 @@ class SqbylPaths:
     def runs_dir(self) -> Path:
         return self.root / "runs"
 
+    @property
+    def feedback_log(self) -> Path:
+        """Append-only 👍/👎 from `sqbyl serve`/`run` — eval/synth candidates (spec §7)."""
+        return self.root / "feedback.jsonl"
+
     def ensure(self) -> SqbylPaths:
         """Create the directory skeleton if missing. Returns self for chaining."""
         self.root.mkdir(parents=True, exist_ok=True)
