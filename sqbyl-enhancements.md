@@ -8,9 +8,24 @@ Legend: effort **S** ≈ hours, **M** ≈ a day or two, **L** ≈ a week+. Prior
 
 ---
 
+## Progress log
+
+Newest first. Items marked ✅ below are done; ◐ = partially landed.
+
+- ✅ **§1.1 README status table** — flipped to shipped; top caveat narrowed to "not yet on PyPI" ([PR #11](https://github.com/jackwerner/sqbyl/pull/11)).
+- ✅ **§1.4 Databricks tidy** — two metric-attribution code comments reworded vendor-neutral; competitive framing in the spec kept ([PR #11](https://github.com/jackwerner/sqbyl/pull/11)).
+- ✅ **§1.5 spec/plan cleanup** — internal second-person voice stripped from the spec; "all phases complete" banner on the plan; README docs section framed ([PR #11](https://github.com/jackwerner/sqbyl/pull/11)).
+- ◐ **§5.1 dependency & vulnerability management** — `pip-audit` (blocking) + Dependabot shipped ([PR #12](https://github.com/jackwerner/sqbyl/pull/12)). CodeQL held (private repo needs Advanced Security; free once public); `bandit`, SBOM, SHA-pinning still open.
+
+- ✅ **Pre-public secret/history safety scan** — full 43-commit history scanned: no real API keys (only `sk-ant-...` doc placeholders), no hardcoded passwords/secrets/tokens, no credentials in connection strings, cassettes carry no auth material, `.sqbyl/` local state was never committed, and the one committed data file (`fixtures/orders.duckdb`) is synthetic seeded data (`random.Random(1729)`). `.gitignore` covers secrets/state going forward. **Repo is clean to make public** whenever you decide to; doing so also lights up CodeQL for free (§5.1).
+
+**Next up (candidates):** the public flip itself (your call — repo is secret-clean); versioning + PyPI (§3.1); `sqbyl reset` (§4.1); README enterprise overhaul (§1.2).
+
+---
+
 ## 1. Documentation & positioning
 
-### 1.1 Update the README "Project status" table — **S, P0**
+### 1.1 Update the README "Project status" table — **S, P0** — ✅ done (PR #11)
 The status table still reads "🔜 in progress / planned / later" for every capability, but Phases 0–9 are done. It now undersells the project to anyone who lands on it.
 - Flip the table to reflect reality: engine, eval harness, coach + judges, guided `init`, orchestrator, cost machinery, release + runtime + optimizer, more dialects, serve, exports, importers → **shipped**.
 - Drop the "some commands below are not built yet" caveat at the top, or narrow it to the genuinely-unbuilt (large-schema *LLM* selection tuning, warehouse dialects unverified against live warehouses — see §5.4).
@@ -31,7 +46,7 @@ Three long `.md` files at the repo root (design spec, user journey, implementati
 - **Tutorials to write:** (1) zero-to-release on the bundled DuckDB dogfood fixture — this already exists as the CI smoke test, so it's a guaranteed-correct tutorial; (2) embedding a release in a FastAPI app; (3) importing an existing dbt project / query log; (4) reading and acting on a coach report.
 - Auto-publish on tag via GitHub Actions → `gh-pages`. Generate the config reference from the pydantic models so docs can't drift from the schema (leverage invariant 2).
 
-### 1.4 Scrub direct Databricks references? — **S, P1 (mostly no, but tidy two)**
+### 1.4 Scrub direct Databricks references? — **S, P1 (mostly no, but tidy two)** — ✅ done (PR #11)
 You flagged this for lawsuit/patent caution. Assessment: **low risk, but worth a targeted cleanup.**
 - **Naming a competitor and describing its public product is legal and normal** (comparative positioning). "Databricks Genie + Agent Bricks, unbundled" in the design spec is a positioning statement, not IP misuse. There is no patent exposure from *describing* what a public product does, and no trademark issue in nominative comparison. Keep the spec's competitive framing — it's the clearest explanation of what sqbyl is.
 - **Do reconsider two things:**
@@ -40,7 +55,7 @@ You flagged this for lawsuit/patent caution. Assessment: **low risk, but worth a
 - **Do not** copy any Databricks prompt text, benchmark question sets, or scoring rubrics verbatim — build ours from the spec. (No evidence we have; just the standing rule.)
 - Net: no legal scrub required; do a light editorial pass so the *public* story is self-standing and the two metric-attribution comments are vendor-neutral.
 
-### 1.5 Clean up the design spec & implementation plan before public — **S–M, P0**
+### 1.5 Clean up the design spec & implementation plan before public — **S–M, P0** — ✅ done (PR #11)
 Both root docs are strong references but were written as internal working documents; three artifacts read awkwardly to an outside visitor (and the README links all three under "Documentation"):
 - **Spec: strip the second-person "requirements-capture" voice.** Two passages address the reader as "the user": `sqbyl-design-spec.md:408` (*"The thing the user specifically wants: Databricks recommends…"*) and `:550` (*"you explicitly want to stay free to change the model"*). A public reader can't tell who this "user" is — it reads like notes from a client interview. Convert to plain product statements ("sqbyl's Coach recommends…", "the brain/body split keeps you free to change the model"). ~30 min.
 - **Plan: fix the tense — it's a build log in future tense.** [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) is written imperative-to-self (*"don't build it yet," "do not skip or compress it," "deferred to Phase 9," "Done when:"*). Every "don't build yet / later phase" line now describes shipped work. Options: (a) top-and-tail with a "this was the build plan; Phases 0–9 complete" banner and keep it as build history, (b) convert to a forward roadmap + CHANGELOG, or (c) move it under `docs/design/` so it isn't the first deep doc a visitor hits. Recommendation: **(a) + (c)** — cheapest and honest.
