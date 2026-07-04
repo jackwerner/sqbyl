@@ -115,7 +115,9 @@ Today "starting over" means manually deleting files. Two levels:
 
 A structured pass on "what would a security/platform team require before adopting this." Grouped by theme; each is a candidate work item.
 
-### 5.1 Dependency & vulnerability management in CI — **M, P0**
+### 5.1 Dependency & vulnerability management in CI — **M, P0** — *partially landed*
+> **Status:** `pip-audit` (blocking CI job) and Dependabot (weekly, grouped Python deps + Actions) shipped. **CodeQL** is written and runs clean (0 alerts across 130 files) but **can't upload results while the repo is private** — GitHub code scanning needs Advanced Security (paid) on private repos, and is free once the repo is public. Re-add the `codeql.yml` workflow the moment the repo goes public. **Also still open:** `bandit` as a gate (a first pass found *no genuine issues* — all findings were expected noise: B101 asserts-for-type-narrowing, B608 SQL construction, B311 backoff jitter — but wiring it in cleanly needs per-finding `# nosec`/config across ~15 files, its own branch); SBOM + artifact signing; toolchain/action SHA-pinning.
+
 You asked directly: yes, we want this, especially as a package enterprises embed.
 - **Dependency vulnerability scanning:** add `pip-audit` (or `uv`'s emerging audit, or `osv-scanner`) to CI against the resolved `uv.lock`. Fail (or warn-then-fail) on known CVEs in the dependency tree.
 - **Automated dependency updates:** enable **Dependabot** or **Renovate** on `uv.lock` / `pyproject.toml` so version bumps arrive as reviewable PRs (CI already runs lint → type → test → import-linter, so bumps are gated). Renovate handles `uv` lockfiles well and can group/schedule.
