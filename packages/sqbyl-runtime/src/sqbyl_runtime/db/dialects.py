@@ -129,6 +129,11 @@ class PostgresAdapter(DialectAdapter):
                     cur.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
                 finally:
                     cur.close()
+                # Commit so the session default survives SQLAlchemy's reset-on-checkout.
+                # An uncommitted SET runs inside the connect-time transaction and is rolled
+                # back on first use, silently disabling read-only enforcement (caught by the
+                # live-Postgres test in §5.4).
+                dbapi_conn.commit()  # type: ignore[attr-defined]
 
         return engine
 

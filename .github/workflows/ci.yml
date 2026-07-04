@@ -78,3 +78,43 @@ jobs:
           uv export --frozen --no-emit-workspace --no-editable \
             --format requirements-txt > requirements-audit.txt
           uvx pip-audit -r requirements-audit.txt --progress-spinner off
+
+  postgres:
+    # Verify the first-class Postgres dialect against a REAL server (sqbyl-enhancements.md
+    # §5.4): session read-only enforcement, privilege introspection, and schema introspect.
+    # $0 — these tests touch only the DB safety layer, no LLM (invariant 4).
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: sqbyl
+          POSTGRES_DB: sqbyl_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      SQBYL_TEST_POSTGRES_URL: postgresql+psycopg://postgres:sqbyl@127.0.0.1:5432/sqbyl_test
+      # Tripwire: never reach for a real Anthropic key (invariant 4).
+      ANTHROPIC_API_KEY: ""
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Run Postgres integration tests
+        # psycopg is the optional [postgres] extra — add it just for this job.
+        run: uv run --with 'psycopg[binary]>=3.3.4' pytest tests/test_postgres_integration.py -v
