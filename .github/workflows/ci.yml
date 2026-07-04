@@ -47,6 +47,11 @@ jobs:
       - name: Import-direction check
         run: uv run lint-imports
 
+      - name: License-compatibility check
+        # Fail if any dependency carries a strong-copyleft license (sqbyl is MIT and is
+        # embedded into users' apps). The current tree is MIT/BSD/Apache/PSF/MPL-2.0.
+        run: uv run --with pip-licenses pip-licenses --fail-on="GPL;AGPL;LGPL"
+
       - name: Test
         run: uv run pytest
 

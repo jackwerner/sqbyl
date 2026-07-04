@@ -180,7 +180,8 @@ You listed langchain/pydantic/fastapi. Status:
 - **Write it down as a threat model:** what an injected instruction *could* do here is limited to steering which SELECT runs — it can't write, can't DDL, can't exfiltrate beyond what the read-only role already sees. State that explicitly; it's a reassuring story when told plainly.
 - Consider whether profiled sample values / column descriptions that flow into the prompt need any sanitization or delimiting. Low urgency given the read-only cap, but a security reviewer will ask.
 
-### 5.8 Licensing, governance & contribution — **S, P1**
+### 5.8 Licensing, governance & contribution — **S, P1** — ✅ done
+> **Status:** `SECURITY.md` (GitHub private-advisory reporting), `CONTRIBUTING.md` (setup + gate + the 7 invariants in contributor language), `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), and a PR template shipped. CI now runs a **license-compatibility gate** (`pip-licenses --fail-on=GPL;AGPL;LGPL`) — the current tree is all MIT/BSD/Apache/PSF/MPL-2.0, no copyleft-viral deps. Issue templates remain a nice-to-have. *(CoC enforcement contact is the maintainer email — swap for a dedicated address if preferred.)*
 - **License:** MIT is declared in the README; confirm a `LICENSE` file exists and headers are consistent. MIT is a good, adoption-friendly choice for enterprise (no copyleft friction). Confirm all dependencies are MIT/BSD/Apache-compatible (a `pip-licenses` check in CI catches a surprise GPL dep).
 - **Open-source hygiene for adoption:** add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, a `SECURITY.md` (how to report vulns — enterprises look for this), and issue/PR templates. Cheap, and they're checkboxes on enterprise OSS-vetting forms.
 
