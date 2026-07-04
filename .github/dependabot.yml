@@ -1,0 +1,25 @@
+# Automated dependency updates (sqbyl-enhancements.md §5.1).
+#
+# Bumps arrive as reviewable PRs and run the full CI gate (lint → type → test →
+# import-linter → pip-audit) before they can merge, so an update can't land
+# unvetted. Python deps are grouped into a single weekly PR to keep the noise
+# low for a small maintainer team; GitHub Actions versions update separately.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"

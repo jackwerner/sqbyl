@@ -49,3 +49,27 @@ jobs:
 
       - name: Test
         run: uv run pytest
+
+  security:
+    # Audit the locked dependency tree for known vulnerabilities (sqbyl-enhancements.md §5.1).
+    # Runs alongside `quality`, never spends API tokens (invariant 4).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Audit dependencies for known vulnerabilities
+        # Export the locked, non-editable dependency set (the workspace members
+        # themselves have no published files to hash) and audit it against the
+        # PyPI/OSV advisory databases. A known CVE in the tree fails the build.
+        run: |
+          uv export --frozen --no-emit-workspace --no-editable \
+            --format requirements-txt > requirements-audit.txt
+          uvx pip-audit -r requirements-audit.txt --progress-spinner off
