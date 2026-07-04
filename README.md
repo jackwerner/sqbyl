@@ -145,6 +145,27 @@ def ask(q: str):
 
 It inherits your app's auth, connection pooling, and observability. `sqbyl run <release>` / `sqbyl serve` exist for non-Python callers and quick HTTP exposure, but are **intentionally not hardened** — don't put `sqbyl serve` on the open internet.
 
+### Async & concurrency
+
+`agent.ask()` is **synchronous and blocking** (an LLM round-trip plus DB queries), but a single loaded `agent` is **safe to call concurrently** — the DB engine pools per-thread connections, the Anthropic client is thread-safe, and trace writes are locked. So under a threadpool it serves concurrent requests correctly.
+
+The one rule for an **async** server: run `ask()` off the event loop, don't call it inside an `async def` directly (that blocks the loop for the whole request).
+
+```python
+# FastAPI: a sync endpoint is auto-run in a threadpool — this is the example above, and it's correct.
+@app.post("/ask")
+def ask(q: str): ...
+
+# From an async endpoint, offload explicitly:
+from starlette.concurrency import run_in_threadpool
+
+@app.post("/ask")
+async def ask(q: str):
+    return await run_in_threadpool(agent.ask, q)   # or asyncio.to_thread(agent.ask, q)
+```
+
+Bound concurrency (threadpool + DB pool size) as you would for any blocking workload. A native-async runtime (`AsyncAnthropic` + async DB) isn't provided — the threadpool pattern is the supported path.
+
 ---
 
 ## Project layout

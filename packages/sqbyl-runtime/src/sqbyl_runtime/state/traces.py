@@ -9,6 +9,7 @@ request/response, and a JSONL writer/reader.
 from __future__ import annotations
 
 import secrets
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -100,15 +101,22 @@ def llm_call_span(
 
 
 class TraceWriter:
-    """Append spans as JSON lines to a trace file."""
+    """Append spans as JSON lines to a trace file.
+
+    Thread-safe: a lock serializes appends so concurrent ``ask()`` calls (e.g. an
+    enterprise API serving requests from a threadpool) can share one writer without
+    interleaving or corrupting lines.
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
 
     def write(self, span: Span) -> None:
-        with self.path.open("a") as fh:
-            fh.write(span.model_dump_json() + "\n")
+        line = span.model_dump_json() + "\n"
+        with self._lock, self.path.open("a") as fh:
+            fh.write(line)
 
 
 def read_spans(path: str | Path) -> list[Span]:

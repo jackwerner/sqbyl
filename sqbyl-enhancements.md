@@ -28,6 +28,7 @@ Newest first. Items marked ✅ below are done; ◐ = partially landed.
 - ✅ **PyPI publishing guide** — [`PUBLISHING.md`](PUBLISHING.md), a first-timer walkthrough ([PR #24](https://github.com/jackwerner/sqbyl/pull/24)).
 - ◐ **§2.2 `base_url` passthrough** — route Claude through a proxy/gateway via `model.base_url` or `load(base_url=)`.
 - ◐ **§5.1 supply-chain polish** — SBOM (CycloneDX) attached to releases + all GitHub Actions SHA-pinned. Bandit deferred (low ROI; the one real finding — unquoted identifiers in the profiler — is tracked as a quoting follow-up).
+- ✅ **§2.3 concurrency-safe runtime** — made `TraceWriter` + lazy client init thread-safe; verified one `Agent` serves concurrent `ask()`s; README documents the async/threadpool pattern.
 
 **Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); `base_url` provider passthrough (§2.2, small — bring-your-own-Claude-endpoint/gateway); §5.1 polish (bandit / SBOM in release / pin actions by SHA); a GitHub Pages docs site (§1.3, larger).
 
@@ -104,6 +105,9 @@ Difficulty, tiered by target:
   - **Model-role defaults** (`claude-opus-4-8` etc.) would need provider-aware defaults.
 - **Recommended sequencing:** (1) `base_url` passthrough (S) → (2) Bedrock/Vertex Claude clients (S–M) → (3) generalize the pricing seam per-provider (M) → (4) only then OpenAI/Azure if there's real demand. The seam design means each step is additive and testable with the existing mock/replay harness (invariant 4) — write a mock-backed unit test + one record-replay cassette per new client, same as every other LLM path.
 - **One caveat worth stating up front:** sqbyl's whole pitch is "one Anthropic key powers everything." Multi-provider is a real feature but it *dilutes that story*. Frame it as "bring your own Claude endpoint (Bedrock/Vertex/gateway)" first; treat non-Claude providers as a separate, later decision.
+
+### 2.3 Async & concurrency for enterprise APIs — **S** — ✅ done
+> **Status:** the shipped runtime is now verified safe under concurrent load. `agent.ask()` is synchronous/blocking (LLM round-trip + DB), but one loaded `Agent` can be called from many threads at once — the DB engine pools per-thread connections, the Anthropic client is thread-safe, and the two shared-mutable pieces were locked (**`TraceWriter` appends** and **lazy SDK-client construction**). An end-to-end concurrent-`ask()` test plus targeted thread-safety tests cover it. README's "Async & concurrency" note documents the threadpool pattern (sync endpoint auto-threadpooled, or `run_in_threadpool`/`asyncio.to_thread` from an `async def`) and the footgun (calling `ask()` bare inside `async def` blocks the loop). A native-async runtime (`AsyncAnthropic` + async DB) remains a large, demand-driven follow-up — the threadpool path is the supported one.
 
 ---
 
