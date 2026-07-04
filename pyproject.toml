@@ -83,9 +83,16 @@ forbidden_modules = ["sqbyl"]
 # that imports `heldout` or the `runner` **directly** is still caught — the contract fails
 # closed on an actual violation while permitting the sanctioned eval door.
 [[tool.importlinter.contracts]]
-name = "the dev-loop (synth/console/coach/init/optimize) cannot read the held-out test set"
+name = "the dev-loop (synth/console/coach/init/optimize/importers) cannot read the held-out test set"
 type = "forbidden"
-source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach", "sqbyl.init", "sqbyl.optimize"]
+source_modules = [
+    "sqbyl.synth",
+    "sqbyl.console",
+    "sqbyl.coach",
+    "sqbyl.init",
+    "sqbyl.optimize",
+    "sqbyl.importers",
+]
 # `eval.selection` (the 9.1 selection eval) is forbidden alongside `heldout`: it takes a
 # caller-supplied question list, so a dev-loop module importing it could hand it `test.yaml`
 # questions. The dev loop optimizes on dev only — it has no business scoring selection on the

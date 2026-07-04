@@ -1500,6 +1500,84 @@ def _serve_forever(chat: object, *, host: str, port: int, budget: float | None) 
     return 0
 
 
+def _import(args: list[str]) -> int:
+    """`sqbyl import {dbt <compiled_dir>|queries <file>|views} [DIR]` — seed from existing SQL.
+
+    Deterministic and $0: execution-grounds each source query into a review candidate and
+    proposes the joins it observed. Writes candidates to the review queue; prints the joins
+    to add to semantics after review.
+    """
+    from pathlib import Path
+
+    from sqbyl.candidates_io import add_candidates
+    from sqbyl.importers import (
+        import_queries,
+        queries_from_dbt,
+        queries_from_views,
+        split_sql_statements,
+    )
+    from sqbyl.project import Project
+
+    positional = [a for a in args if not a.startswith("-")]
+    if not positional:
+        print("usage: sqbyl import {dbt <dir>|queries <file>|views} [DIR]")
+        return 2
+    kind = positional[0]
+    project = Project.load(positional[-1] if len(positional) > 2 else ".")
+    dialect = project.manifest.database.dialect
+
+    if kind == "dbt":
+        if len(positional) < 2:
+            print("usage: sqbyl import dbt <target/compiled dir> [DIR]")
+            return 2
+        inputs = queries_from_dbt(positional[1], dialect=dialect)
+    elif kind == "queries":
+        if len(positional) < 2:
+            print("usage: sqbyl import queries <file.sql> [DIR]")
+            return 2
+        inputs = split_sql_statements(Path(positional[1]).read_text(), dialect=dialect)
+    elif kind == "views":
+        inputs = []  # populated from the DB below
+    else:
+        print(f"unknown import source {kind!r}; expected dbt, queries, or views")
+        return 2
+
+    with project.connect() as db:
+        if kind == "views":
+            inputs = queries_from_views(db)
+        if not inputs:
+            print(f"▸ no importable queries found for '{kind}'")
+            return 0
+        print(f"▸ importing {len(inputs)} quer(y/ies) from '{kind}' (deterministic, $0)…")
+        result = import_queries(inputs, db=db, dialect=dialect)
+
+    if result.candidates:
+        add_candidates(project, result.candidates)
+        print(f"  ✓ {result.n_candidates} example candidate(s) → review with `sqbyl review`")
+        with_literals = sum(1 for c in result.candidates if "contains-literals" in c.tags)
+        if with_literals and kind in ("queries", "views"):
+            # Imported production SQL may bake in real values (possibly PII) that would land in
+            # the git-committed dev.yaml on accept — surface it before the human accepts.
+            print(
+                f"  ⚠ {with_literals} candidate(s) contain SQL literals (tagged "
+                "`contains-literals`) — review may include real/PII values; redact before "
+                "accepting into dev.yaml"
+            )
+    if result.dropped:
+        print(f"  ⚠ {len(result.dropped)} query(ies) dropped (didn't run / empty result)")
+    needs_q = sum(1 for c in result.candidates if "needs-question" in c.tags)
+    if needs_q:
+        print(f"  · {needs_q} candidate(s) need a question written (no source label)")
+    if result.joins:
+        print(f"\n  {result.n_joins} proposed join(s) (add to semantics after review):")
+        for j in result.joins:
+            print(
+                f"    {j.from_table} ⋈ {j.to_table}  ON {j.on}  "
+                f"[seen ×{j.hits}, confidence {j.confidence:.2f}]"
+            )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args and args[0] in {"-V", "--version", "version"}:
@@ -1537,9 +1615,11 @@ def main(argv: list[str] | None = None) -> int:
         return _serve(args[1:])
     if args and args[0] == "run":
         return _run(args[1:])
+    if args and args[0] == "import":
+        return _import(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, release, optimize, serve, run, schema export, version"
+        "coach, cost, report, release, optimize, serve, run, import, schema export, version"
     )
     return 0
 
