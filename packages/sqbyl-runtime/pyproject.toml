@@ -8,7 +8,7 @@ license = "MIT"
 authors = [{ name = "Jack Werner" }]
 dependencies = [
     "pydantic>=2.7,<3",
-    "anthropic>=0.40",
+    "anthropic>=0.116.0",
     "sqlalchemy>=2.0",
     "duckdb>=1.0",
     "duckdb-engine>=0.13",
