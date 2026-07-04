@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 
 from sqbyl_runtime.context import CompiledContext, ProjectKnowledge
 from sqbyl_runtime.db import Database, QueryResult, StaticValidationError, WriteAttemptError
-from sqbyl_runtime.llm.base import LLMClient, LLMRequest, Message, Usage
+from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, Message, Usage
 from sqbyl_runtime.state.traces import Span, TraceWriter, llm_call_span, new_span_id, new_trace_id
 
 # OTel GenAI operation name for an agent invocation.
@@ -60,6 +60,13 @@ class AgentResult(BaseModel):
     rows: list[list[Any]] = Field(default_factory=list)
     used_assets: list[str] = Field(default_factory=list)
     selected_tables: list[str] = Field(default_factory=list)
+    # Why the schema was narrowed the way it was: the strategy that actually ran, whether it
+    # degraded to include-all, and the selector's notes — so a question that silently lost the
+    # table it needed (or a selector that's effectively off) is legible on the result, not only
+    # in the raw trace (transparency; ml-systems / responsible-ai).
+    selection_strategy: str = "include_all"
+    selection_fell_back: bool = False
+    selection_notes: list[str] = Field(default_factory=list)
     attempts: int = 0
     repaired: bool = False
     error: str | None = None
@@ -82,6 +89,7 @@ def ask(
     db: Database,
     llm: LLMClient,
     model: str,
+    selection_model: str | None = None,
     self_repair_attempts: int = 2,
     max_tokens: int = 2048,
     trace_writer: TraceWriter | None = None,
@@ -90,10 +98,11 @@ def ask(
 
     Generates, statically validates, executes read-only, and self-repairs up to
     ``self_repair_attempts`` times. Always writes an OTel-shaped run span (plus a
-    child span per LLM call) when a ``trace_writer`` is given.
+    child span per LLM call) when a ``trace_writer`` is given. ``selection_model``
+    pins the model for large-schema table shortlisting (spec §5.1); it defaults to
+    ``model`` so small projects — which never make a selection call — are unaffected.
     """
     started = time.perf_counter()
-    context = knowledge.compile(question)
     trace_id = new_trace_id()
     run_span = Span(
         name="ask",
@@ -102,8 +111,41 @@ def ask(
         attributes={"gen_ai.operation.name": _GEN_AI_OPERATION, "sqbyl.question": question},
     )
 
+    # Selection (large-schema shortlisting) may spend tokens; compile threads that usage
+    # onto the context so it's metered with generation below (invariant 5). When the
+    # strategy makes an LLM call, trace it as its own GenAI child span (invariant 7).
+    def _trace_selection(req: LLMRequest, resp: LLMResponse) -> None:
+        if trace_writer is not None:
+            trace_writer.write(
+                llm_call_span(
+                    req,
+                    resp,
+                    operation=_GEN_AI_OPERATION,
+                    name="select tables",
+                    trace_id=trace_id,
+                    parent_span_id=run_span.span_id,
+                )
+            )
+
+    context = knowledge.compile(
+        question,
+        llm=llm,
+        model=selection_model or model,
+        on_llm_call=_trace_selection,
+    )
+    # Put the selection outcome on the run span so a silent drop/fallback is auditable in
+    # the trace even on the deterministic paths that emit no child span (transparency).
+    run_span.attributes["sqbyl.selection.strategy"] = context.selection_strategy
+    run_span.attributes["sqbyl.selection.fell_back"] = context.selection_fell_back
+    run_span.attributes["sqbyl.selection.selected_tables"] = context.selected_tables
+    if context.notes:
+        run_span.attributes["sqbyl.selection.notes"] = context.notes
+
     messages: list[Message] = [Message(role="user", content=context.user)]
-    total_usage = Usage()
+    # Seed the run's usage with any tokens the selection step already spent so the
+    # returned total (and thus the meter/budget) accounts for shortlisting, not just
+    # generation.
+    total_usage = context.usage
     attempts: list[AgentAttempt] = []
     last_gen: AgentGeneration | None = None
 
@@ -166,6 +208,9 @@ def ask(
         sql=last_gen.sql,
         used_assets=last_gen.used_assets,
         selected_tables=context.selected_tables,
+        selection_strategy=context.selection_strategy,
+        selection_fell_back=context.selection_fell_back,
+        selection_notes=context.notes,
         attempts=len(attempts),
         repaired=len(attempts) > 1,
         error=attempts[-1].error,
@@ -214,6 +259,9 @@ def _success(
         rows=rows,
         used_assets=cited,
         selected_tables=context.selected_tables,
+        selection_strategy=context.selection_strategy,
+        selection_fell_back=context.selection_fell_back,
+        selection_notes=context.notes,
         attempts=attempts,
         repaired=attempts > 1,
         usage=usage,

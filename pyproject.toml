@@ -84,7 +84,11 @@ forbidden_modules = ["sqbyl"]
 name = "the dev-loop (synth/console/coach/init/optimize) cannot read the held-out test set"
 type = "forbidden"
 source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach", "sqbyl.init", "sqbyl.optimize"]
-forbidden_modules = ["sqbyl.eval.heldout"]
+# `eval.selection` (the 9.1 selection eval) is forbidden alongside `heldout`: it takes a
+# caller-supplied question list, so a dev-loop module importing it could hand it `test.yaml`
+# questions. The dev loop optimizes on dev only — it has no business scoring selection on the
+# held-out set — so the safe structural guard is to keep the whole selection eval out of reach.
+forbidden_modules = ["sqbyl.eval.heldout", "sqbyl.eval.selection"]
 ignore_imports = ["sqbyl.project -> sqbyl.eval.runner"]
 
 # `sqbyl.optimize` is held to the same rule (Phase 8.3): its coach→apply→eval loop only ever

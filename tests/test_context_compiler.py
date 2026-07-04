@@ -64,11 +64,13 @@ def test_compiled_context_grounding(knowledge: ProjectKnowledge) -> None:
 
 
 def test_large_schema_emits_a_note() -> None:
-    # Minimal tables past the include-all limit.
+    # Minimal tables past the include-all limit, on the default include-all strategy.
     many = [TableSemantics(table=f"s.t{i}") for i in range(31)]
     ctx = compile_context("q", dialect=Dialect.duckdb, semantics=many)
-    assert any("Phase 9" in n for n in ctx.notes)
-    assert len(ctx.selected_tables) == 31  # still include everything for now
+    # Include-all still keeps every table, but now nudges toward a narrowing strategy.
+    assert any("include-everything limit" in n for n in ctx.notes)
+    assert any("lexical/llm" in n for n in ctx.notes)
+    assert len(ctx.selected_tables) == 31
 
 
 def test_matches_golden_snapshot(knowledge: ProjectKnowledge) -> None:

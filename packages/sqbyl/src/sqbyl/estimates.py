@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 # Rough per-call token sizes by workload. Inputs are dominated by the compiled
 # schema/semantics block; outputs by the structured result the role emits.
 _ASK_IN, _ASK_OUT = 1500, 300
+_SELECT_IN, _SELECT_OUT = 800, 60  # compact table catalog in, a short JSON name list out
 _ANNOTATE_IN, _ANNOTATE_OUT = 1500, 400
 _SYNTH_IN, _SYNTH_OUT = 2000, 2000  # one batch drafting call, large output
 _COACH_IN, _COACH_OUT = 4000, 2000  # failures + full context in, ranked diffs out
@@ -115,6 +116,7 @@ def eval_estimate(
     questions: int,
     judge_model: str | None = None,
     self_repair_attempts: int = 0,
+    selection_model: str | None = None,
 ) -> CostEstimate:
     """Agent calls (with self-repair headroom) plus, when judging is on, the judge panel.
 
@@ -122,6 +124,10 @@ def eval_estimate(
     assumes every question may exhaust its self-repair retries, and the judge line assumes
     every question lands in the review pile and runs the whole ``_JUDGE_PANEL``. In practice
     most questions pass on the first try and skip judging entirely, so real spend is lower.
+
+    ``selection_model`` adds a per-question table-shortlisting call, so the estimate covers
+    large-schema LLM selection (spec §5.1); pass it only when the strategy is ``llm``/
+    ``llm_lexical`` (include-all/lexical spend nothing and add no line).
     """
     per_question_calls = 1 + self_repair_attempts
     items = [
@@ -133,6 +139,16 @@ def eval_estimate(
             avg_output_tokens=_ASK_OUT,
         )
     ]
+    if selection_model is not None:
+        items.append(
+            EstimateItem(
+                label=f"select tables for {questions} question(s) (1 shortlist call each)",
+                model=selection_model,
+                calls=questions,
+                avg_input_tokens=_SELECT_IN,
+                avg_output_tokens=_SELECT_OUT,
+            )
+        )
     if judge_model is not None:
         items.append(
             EstimateItem(
@@ -163,11 +179,15 @@ def estimate_for_command(project: Project, command: str, *, n: int = 20) -> Cost
         return synth_estimate(manifest.for_role("synth"), n=n)
     if command == "eval":
         judge = manifest.for_role("judge") if project.manifest.automation.auto_judge else None
+        # A large-schema project shortlists tables per question (spec §5.1); count that call
+        # only when the strategy actually makes one.
+        selecting = project.manifest.selection.strategy in ("llm", "llm_lexical")
         return eval_estimate(
             manifest.for_role("agent"),
             questions=_count_dev_questions(project),
             judge_model=judge,
             self_repair_attempts=repairs,
+            selection_model=manifest.for_role("selection") if selecting else None,
         )
     if command == "coach":
         return coach_estimate(manifest.for_role("coach"), failures=_count_failures(project))

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
-from sqbyl_runtime.models import Dialect, SqbylModel
+from sqbyl_runtime.models import Dialect, SelectionConfig, SqbylModel
 
 # Roles that can pin their own model; each falls back to ``ModelConfig.default``.
 MODEL_ROLES = (
@@ -99,6 +99,9 @@ class SqbylManifest(SqbylModel):
     model: ModelConfig
     automation: AutomationConfig = Field(default_factory=AutomationConfig)
     defaults: DefaultsConfig = Field(default_factory=DefaultsConfig)
+    # Context selection (spec §5.1). Defaults to include-all (the small-project posture);
+    # set ``strategy: lexical|llm|llm_lexical`` + ``max_tables`` for large schemas (Phase 9).
+    selection: SelectionConfig = Field(default_factory=SelectionConfig)
 
     @model_validator(mode="after")
     def _warn_keys(self) -> SqbylManifest:

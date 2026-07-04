@@ -38,7 +38,6 @@ from sqbyl_runtime.models import (
     JudgePrompt,
     ReleaseArtifact,
     Scorecard,
-    SelectionConfig,
 )
 from sqbyl_runtime.state.layout import SqbylPaths
 
@@ -92,9 +91,10 @@ def build_release(
         examples=load_examples(project),
         trusted_assets=load_trusted_assets(project),
         judges={name: JudgePrompt(name=name, prompt=prompts[name]) for name in ALL_JUDGES},
-        # Large-schema selection is Phase 9; small projects ship the include-everything
-        # default so the runtime compiles context exactly as dev did.
-        selection=SelectionConfig(),
+        # Ship the project's own selection config so the runtime compiles context exactly
+        # as dev did — include-all for small projects, lexical/LLM shortlisting past
+        # ``max_tables`` for large schemas (spec §5.1).
+        selection=project.manifest.selection,
     )
 
 

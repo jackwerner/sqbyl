@@ -83,4 +83,5 @@ def load_knowledge(project: Project) -> ProjectKnowledge:
         instructions=load_instructions(project),
         examples=load_examples(project),
         trusted_assets=load_trusted_assets(project),
+        selection=project.manifest.selection,
     )
