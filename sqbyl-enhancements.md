@@ -24,8 +24,9 @@ Newest first. Items marked ✅ below are done; ◐ = partially landed.
 - ✅ **§5.2 serve hardening** — reviewed: already satisfied (loopback default + non-local warning + test). Deliberately *no* `--auth` — dev models shouldn't be served publicly; production is runtime-embedding. No change needed.
 - ✅ **§5.4 live-Postgres CI** — service-container job + integration tests; **found & fixed a real read-only-enforcement bug** in the Postgres adapter (uncommitted session `SET`). Verified against live PG.
 - ✅ **§4.1 `sqbyl reset`** — clear local `.sqbyl/` state (keeps cost history + judge calibration unless `--all`).
+- ✅ **§1.2 README enterprise overhaul** — audience reframe + Architecture + Security sections; hand-holding trimmed ([PR #22](https://github.com/jackwerner/sqbyl/pull/22)).
 
-**Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); README enterprise overhaul (§1.2 — I'll bring a proposal); Bedrock/Vertex + `base_url` provider support (§2.2); §5.1 polish (bandit/SBOM/SHA-pin).
+**Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); `base_url` provider passthrough (§2.2, small — bring-your-own-Claude-endpoint/gateway); §5.1 polish (bandit / SBOM in release / pin actions by SHA); a GitHub Pages docs site (§1.3, larger).
 
 ---
 
@@ -37,7 +38,8 @@ The status table still reads "🔜 in progress / planned / later" for every capa
 - Drop the "some commands below are not built yet" caveat at the top, or narrow it to the genuinely-unbuilt (large-schema *LLM* selection tuning, warehouse dialects unverified against live warehouses — see §5.4).
 - Keep the "expect shapes to change until a first tagged release" line until we actually tag (see §3).
 
-### 1.2 Overhaul the README for enterprise professionals — **M, P1**
+### 1.2 Overhaul the README for enterprise professionals — **M, P1** — ✅ done (PR #22)
+> **Status:** shipped — audience reframe, an Architecture-at-a-glance section (two-package split + dependency arrow), a Security & data-handling section (which also covers most of §5.7's threat-model ask and mentions §5.6's OTel export), hand-holding trimmed, stale dialect line fixed. Deeper docs site (§1.3) is still separate.
 The current README is written for an individual cloning-and-hacking. Retarget it at an engineer evaluating sqbyl for a team, without dumbing anything down.
 - **Cut the obvious.** Remove hand-holding a professional doesn't need: the `# Credentials never do — use env: indirection` comment in the `sqbyl.yaml` example, the "you're comfortable with a CLI" reassurance, over-explained `env:` mechanics. Assume the reader knows what a read-only role and an env var are.
 - **Lead with the evaluation story, not the walkthrough.** The "[Built for defensible ML systems](README.md#built-for-defensible-ml-systems)" section is the actual differentiator for an enterprise buyer (held-out gate, deterministic headline, provenance-stamped scorecard). Consider promoting it above the quickstart.
