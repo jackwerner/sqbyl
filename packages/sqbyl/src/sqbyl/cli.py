@@ -16,6 +16,7 @@ from sqbyl import __version__
 
 if TYPE_CHECKING:
     from sqbyl.init import EnrichmentResult, FreePass, InitPlan
+    from sqbyl.models.optimize import OptimizeResult
     from sqbyl.project import Project
     from sqbyl_runtime.llm.base import Usage
 
@@ -357,6 +358,157 @@ def _release(args: list[str]) -> int:
 # Below this many questions an eval accuracy is directional, not a settled number — the same
 # small-sample posture the §7.5 report takes; kept local to the release CLI's caveats.
 _SMALL_EVAL = 30
+
+
+def _optimize(args: list[str]) -> int:
+    """`sqbyl optimize [DIR] --budget $N [--target T] [--max-rounds M] [--json] [--dry-run]`.
+
+    The autonomous loop (spec §6.C): coach → apply → eval **on dev only**, keeping edits that
+    raise the dev score and reverting those that don't, until ``--target`` or ``--budget`` is
+    hit. Returns a frontier of versions (readable git diffs); the held-out test is scored
+    **once** on the picked version, and a large dev↔test gap prints an overfitting warning.
+    """
+    from sqbyl.eval.benchmarks_io import dev_set_size
+    from sqbyl.llm import build_llm_client
+    from sqbyl.optimize import optimize
+    from sqbyl.project import Project
+
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, auto, dry_run = budget_parse
+    target_opt, rounds_opt = _opt(args, "target"), _opt(args, "max-rounds")
+    gain_opt = _opt(args, "min-gain")
+    replay, record = _opt(args, "replay"), _opt(args, "record")
+    as_json = "--json" in args
+    consumed = {target_opt, rounds_opt, gain_opt, replay, record}
+    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+
+    # optimize is autonomous — it spends across many rounds without a human in the loop — so a
+    # hard budget cap is required, not just under --auto (invariant 5).
+    if budget is None and not dry_run:
+        print("optimize requires --budget $N (it runs an autonomous, multi-round paid loop)")
+        return 2
+    target = float(target_opt) if target_opt else project.manifest.defaults.readiness_target
+    max_rounds = int(rounds_opt) if rounds_opt else 10
+    min_gain = int(gain_opt) if gain_opt else 1
+    dev_n = dev_set_size(project)
+
+    _print_optimize_estimate(project, dev_n, budget, dry_run=dry_run)
+    if dry_run:
+        return 0
+    # An unattended, multi-round spend that MUTATES the working tree — get consent up front, not
+    # just a cap (invariant 5 / responsible-ai): show what it'll do, then ask (guided) or note
+    # the cap is the floor (--auto). Warn if the tree is dirty so machine edits stay separable.
+    _warn_if_dirty(project)
+    if not auto and not _confirm("proceed with the autonomous optimize run?"):
+        print("cancelled — nothing spent.")
+        return 0
+
+    client = build_llm_client(project.manifest, replay=replay, record=record)
+    result = optimize(
+        project, llm=client, target=target, budget=budget, min_gain=min_gain, max_rounds=max_rounds
+    )
+
+    if as_json:
+        print(result.model_dump_json(indent=2))
+        return 0
+    return _report_optimize(result)
+
+
+def _print_optimize_estimate(
+    project: Project, dev_n: int, budget: float | None, *, dry_run: bool
+) -> None:
+    from sqbyl.estimates import coach_estimate, eval_estimate
+
+    agent_model = project.manifest.model.for_role("agent")
+    coach_model = project.manifest.model.for_role("coach")
+    per_eval = eval_estimate(agent_model, questions=dev_n).total_usd
+    per_coach = coach_estimate(coach_model, failures=dev_n).total_usd
+    header = "dry run — no API calls" if dry_run else "estimated spend before you start"
+    print(f"▸ optimize ({header}):\n")
+    print(f"  baseline dev eval    ~${per_eval:.4f} ({dev_n} question(s))")
+    print(f"  each round           ≈ coach ~${per_coach:.4f} + trial dev eval(s) ~${per_eval:.4f}")
+    print(f"  final held-out eval  ~${per_eval:.4f} (scored once on the picked version)")
+    cap = f"${budget:.2f}" if budget is not None else "(none)"
+    print(f"\n  the loop hard-stops before any step would exceed --budget {cap}")
+    if not dry_run:
+        print("  it EDITS your project files in place (never commits) — review with `git diff`.")
+
+
+def _warn_if_dirty(project: Project) -> None:
+    """Best-effort: warn if the working tree already has uncommitted changes, so the optimizer's
+    machine edits don't silently intermingle with the user's own (responsible-ai)."""
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project.root), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return
+    if out.returncode == 0 and out.stdout.strip():
+        print(
+            "  ⚠ your working tree has uncommitted changes — commit or stash first so the "
+            "optimizer's edits stay distinguishable from yours.\n"
+        )
+
+
+def _confirm(question: str, *, prompt: object = None) -> bool:
+    ask_fn = prompt if prompt is not None else input
+    assert callable(ask_fn)
+    return str(ask_fn(f"\n{question} [y/N] ")).strip().lower().startswith("y")
+
+
+def _report_optimize(result: OptimizeResult) -> int:
+    picked = result.picked_point
+    print(
+        f"\n▸ optimize — {result.stopped.value} after {result.rounds} round(s) · "
+        f"${result.spent_usd:.4f} spent · {result.models}"
+    )
+    print(
+        f"  edits: {result.edits_tried} tried, {result.edits_kept} kept, "
+        f"{result.edits_reverted} reverted"
+    )
+    print(f"\nfrontier ({len(result.frontier)} version(s), dev accuracy):")
+    for pt in result.frontier:
+        star = " ← picked" if pt.version == result.picked else ""
+        if pt.proposal_title:
+            sig = "" if pt.significant else " ⚠ within noise"
+            edit = f"  +{pt.net_gain}q  {pt.proposal_title} [{pt.layer}]{sig}"
+        else:
+            edit = "  (baseline)"
+        print(
+            f"  v{pt.version}  {pt.dev_accuracy:.0%} "
+            f"(95% CI {pt.dev_accuracy_low:.0%}–{pt.dev_accuracy_high:.0%}, n={pt.dev_n}) · "
+            f"${pt.dev_cost_usd:.4f} · {pt.mean_latency_ms:.0f}ms{star}\n{edit}"
+        )
+    reached = "reached" if picked.dev_accuracy >= result.target else "not reached"
+    print(
+        f"\npicked v{result.picked}: dev {picked.dev_accuracy:.0%} "
+        f"(target {result.target:.0%}, {reached})"
+    )
+    # A dev gain that doesn't clear the paired sign test is likely noise on a small set — say so
+    # plainly rather than presenting an optimized-against number as settled (ml-systems).
+    if result.picked > 0 and not result.picked_significant:
+        print(
+            "  ⚠ the dev gain over baseline is NOT statistically distinguishable from noise on "
+            "this set — don't trust it; the held-out number below is authoritative."
+        )
+    if result.test_accuracy is not None:
+        print(f"  held-out test {result.test_accuracy:.0%} (n={result.test_n}, scored once)")
+        gap = result.dev_test_gap or 0.0
+        if gap > 0.1:
+            print(
+                f"  ⚠ dev↔test gap {gap:+.0%} — the loop may have overfit dev; the held-out "
+                "number is the one to trust (spec §7/§11)."
+            )
+    print("\nreview the edits with `git diff`; revert with `git checkout` (never auto-committed).")
+    return 0
 
 
 def _ask(args: list[str]) -> int:
@@ -1209,9 +1361,11 @@ def main(argv: list[str] | None = None) -> int:
         return _report(args[1:])
     if args and args[0] == "release":
         return _release(args[1:])
+    if args and args[0] == "optimize":
+        return _optimize(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, release, schema export, version"
+        "coach, cost, report, release, optimize, schema export, version"
     )
     return 0
 
