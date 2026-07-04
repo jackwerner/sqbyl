@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from typing import Any
 
 from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, RateLimitError, Usage
@@ -36,24 +37,33 @@ class AnthropicLLMClient(LLMClient):
         self._client = client
         self._api_key = api_key
         self._base_url = base_url
+        self._lock = threading.Lock()
 
     def _ensure_client(self) -> Any:
+        # Double-checked lock: concurrent first calls (a threadpool serving an async API)
+        # must not each build a separate SDK client. The SDK client itself is thread-safe
+        # for concurrent requests once built.
         if self._client is not None:
             return self._client
-        key = self._api_key or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set; the real client needs a key "
-                "(use MockLLMClient or RecordReplayLLMClient in tests)"
-            )
-        try:
-            import anthropic
-        except ImportError as exc:  # pragma: no cover - import guard
-            raise RuntimeError("the 'anthropic' package is required for the real client") from exc
-        kwargs: dict[str, Any] = {"api_key": key}
-        if self._base_url:
-            kwargs["base_url"] = self._base_url
-        self._client = anthropic.Anthropic(**kwargs)
+        with self._lock:
+            if self._client is not None:
+                return self._client
+            key = self._api_key or os.environ.get("ANTHROPIC_API_KEY")
+            if not key:
+                raise RuntimeError(
+                    "ANTHROPIC_API_KEY is not set; the real client needs a key "
+                    "(use MockLLMClient or RecordReplayLLMClient in tests)"
+                )
+            try:
+                import anthropic
+            except ImportError as exc:  # pragma: no cover - import guard
+                raise RuntimeError(
+                    "the 'anthropic' package is required for the real client"
+                ) from exc
+            kwargs: dict[str, Any] = {"api_key": key}
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            self._client = anthropic.Anthropic(**kwargs)
         return self._client
 
     def _system_param(self, request: LLMRequest) -> Any:
