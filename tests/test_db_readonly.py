@@ -104,9 +104,10 @@ def test_resolve_url_normalizes_bare_path() -> None:
     assert resolve_url("duckdb:///x", Dialect.duckdb) == "duckdb:///x"
 
 
-def test_unsupported_dialect_is_explicit() -> None:
-    with pytest.raises(NotImplementedError, match="Phase 9"):
-        adapter_for(Dialect.snowflake)
+def test_every_dialect_has_an_adapter() -> None:
+    # Phase 9.5 registered the breadth dialects; every Dialect member now resolves.
+    for dialect in Dialect:
+        assert adapter_for(dialect).dialect is dialect
 
 
 class _StubResult:

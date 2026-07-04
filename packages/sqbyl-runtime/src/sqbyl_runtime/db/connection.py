@@ -41,11 +41,15 @@ class QueryResult:
         return [dict(zip(self.columns, row, strict=True)) for row in self.rows]
 
 
+# Dialects whose bare filesystem path maps to a ``<scheme>:///<path>`` URL.
+_FILE_DIALECT_SCHEME = {Dialect.duckdb: "duckdb", Dialect.sqlite: "sqlite"}
+
+
 def resolve_url(raw: str, dialect: Dialect) -> str:
     """Expand ``env:NAME`` indirection and normalize a bare path into a SQLAlchemy URL.
 
-    A bare filesystem path with no scheme is treated as a DuckDB file path so
-    ``DATABASE_URL=/path/to.duckdb`` (or a raw path in the manifest) just works.
+    A bare filesystem path with no scheme is treated as a file path for the file-backed
+    dialects, so ``DATABASE_URL=/path/to.duckdb`` (or ``…/to.sqlite``) just works.
     """
     url = raw.strip()
     if url.startswith("env:"):
@@ -54,10 +58,10 @@ def resolve_url(raw: str, dialect: Dialect) -> str:
         if not value:
             raise ValueError(f"database url references env:{name}, but ${name} is unset or empty")
         url = value.strip()
-    # `==` not `is`: Dialect is a StrEnum, so this stays correct even if a caller
+    # `==`/`in` not `is`: Dialect is a StrEnum, so this stays correct even if a caller
     # hands in the bare string "duckdb" rather than the enum member.
-    if "://" not in url and dialect == Dialect.duckdb:
-        url = f"duckdb:///{url}"
+    if "://" not in url and dialect in _FILE_DIALECT_SCHEME:
+        url = f"{_FILE_DIALECT_SCHEME[dialect]}:///{url}"
     return url
 
 
@@ -137,12 +141,18 @@ class Database:
         type errors, and dialect issues without running it. Raises
         ``StaticValidationError`` on failure so the pipeline can self-repair. The
         wrapped statement is asserted read-only first, so this never plans a write.
+
+        Dialects with no SQL-level ``EXPLAIN`` (e.g. BigQuery) skip static validation —
+        the read-only guard on execution is the backstop.
         """
         if self.read_only:
             assert_read_only(sql, dialect=self.dialect)
+        explain_sql = self._adapter.explain_statement(sql)
+        if explain_sql is None:
+            return
         try:
             with self._engine.connect() as conn:
-                conn.execute(text(f"EXPLAIN {sql}"))
+                conn.execute(text(explain_sql))
         except SQLAlchemyError as exc:
             # Prefer the driver's own message (DBAPIError.orig) when present.
             raise StaticValidationError(str(getattr(exc, "orig", None) or exc)) from exc

@@ -9,10 +9,14 @@ from __future__ import annotations
 
 from sqbyl_runtime.db.connection import Database, QueryResult, resolve_url
 from sqbyl_runtime.db.dialects import (
+    BigQueryAdapter,
     DialectAdapter,
     DuckDBAdapter,
+    MySQLAdapter,
     PostgresAdapter,
     PrivilegeReport,
+    SnowflakeAdapter,
+    SQLiteAdapter,
     adapter_for,
 )
 from sqbyl_runtime.db.errors import (
@@ -24,12 +28,16 @@ from sqbyl_runtime.db.errors import (
 from sqbyl_runtime.db.guard import assert_read_only, is_read_only
 
 __all__ = [
+    "BigQueryAdapter",
     "Database",
     "DialectAdapter",
     "DuckDBAdapter",
+    "MySQLAdapter",
     "PostgresAdapter",
     "PrivilegeReport",
     "QueryResult",
+    "SQLiteAdapter",
+    "SnowflakeAdapter",
     "StaticValidationError",
     "UnparseableSqlError",
     "WritablePrivilegeWarning",

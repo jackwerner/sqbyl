@@ -16,9 +16,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Postgres driver is optional: DuckDB is the default test dialect, Postgres is the
-# other M0 dialect. `pip install sqbyl-runtime[postgres]` to enable it.
+# Dialect drivers are optional so the minimal runtime stays light. DuckDB is the default
+# (a hard dep above); SQLite needs no driver (Python stdlib). Install the extra for the
+# dialect you target, e.g. `pip install sqbyl-runtime[postgres]`. The dialect seam raises
+# a matching install hint when a driver is missing (db/dialects.py).
 postgres = ["psycopg[binary]>=3.1"]
+mysql = ["pymysql>=1.1"]
+snowflake = ["snowflake-sqlalchemy>=1.5"]
+bigquery = ["sqlalchemy-bigquery>=1.9"]
 
 [build-system]
 requires = ["hatchling"]
