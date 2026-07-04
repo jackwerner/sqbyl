@@ -1,0 +1,101 @@
+# Build both packages and publish to PyPI via Trusted Publishing (OIDC — no long-lived
+# tokens) when a `v*` tag is pushed (sqbyl-enhancements.md §3.1).
+#
+# ONE-TIME PyPI SETUP before the first run: register a PyPI Trusted Publisher for EACH
+# package (`sqbyl` and `sqbyl-runtime`) pointing at this repository, workflow
+# `release.yml`, and environment `pypi`. See https://docs.pypi.org/trusted-publishers/.
+# Also reserve both project names on PyPI first.
+#
+# Tags should be cut from a green `main` (CI already gates lint/type/test/import/audit
+# on every push there), so this workflow builds and publishes rather than re-testing.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build sqbyl-runtime
+        run: uv build --package sqbyl-runtime --out-dir dist-runtime
+
+      - name: Build sqbyl
+        run: uv build --package sqbyl --out-dir dist-sqbyl
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: |
+            dist-runtime/
+            dist-sqbyl/
+
+  publish-runtime:
+    # Publish the runtime first — the toolkit pins it exactly, so it must exist on PyPI
+    # before `sqbyl` is published.
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sqbyl-runtime/
+    permissions:
+      id-token: write # OIDC token for Trusted Publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+
+      - name: Publish sqbyl-runtime to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-runtime/
+
+  publish-sqbyl:
+    needs: publish-runtime
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/sqbyl/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+
+      - name: Publish sqbyl to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist-sqbyl/
+
+  github-release:
+    needs: publish-sqbyl
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the GitHub Release for this tag
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "${{ github.ref_name }}"
+          --title "${{ github.ref_name }}"
+          --notes "See [CHANGELOG.md](CHANGELOG.md) for release notes."
+          --verify-tag
