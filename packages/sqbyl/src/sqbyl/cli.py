@@ -1578,6 +1578,69 @@ def _import(args: list[str]) -> int:
     return 0
 
 
+# The two audit trails a plain `reset` keeps: the cost history and the human judge review.
+_RESET_KEEP = {"usage.db", "calibration.jsonl"}
+
+
+def _reset(args: list[str]) -> int:
+    """`sqbyl reset [DIR] [--all] [--yes]` — clear local `.sqbyl/` state for a clean slate.
+
+    Default keeps the two audit trails — `usage.db` (cost history) and `calibration.jsonl`
+    (human judge review) — and clears everything else derived (runs, traces, coach
+    proposals, caches, candidates, feedback). `--all` wipes the whole `.sqbyl/`, audit
+    trails included. Authored files (`sqbyl.yaml`, `semantics/`, `benchmarks/`) are never
+    touched — revert those with git.
+    """
+    import shutil
+    from pathlib import Path
+
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    reset_all = "--all" in args
+    assume_yes = "--yes" in args or "-y" in args
+    positional = [a for a in args if not a.startswith("-")]
+    sqbyl_dir = SqbylPaths(Path(positional[0] if positional else ".")).root
+    if not sqbyl_dir.exists():
+        print(f"▸ nothing to reset — {sqbyl_dir} does not exist")
+        return 0
+
+    keep: set[str] = set() if reset_all else _RESET_KEEP
+    targets = sorted(c for c in sqbyl_dir.iterdir() if c.name not in keep)
+    if not targets:
+        print(
+            "▸ nothing to reset — only the preserved audit trails remain "
+            "(usage.db, calibration.jsonl). Use --all to remove those too."
+        )
+        return 0
+
+    print(f"▸ reset will remove from {sqbyl_dir}/:")
+    for c in targets:
+        print(f"    {c.name}{'/' if c.is_dir() else ''}")
+    if reset_all:
+        print(
+            "  ⚠ --all also erases your cost history (usage.db) and judge calibration "
+            "(human review); these cannot be recovered."
+        )
+    elif any(c.name in _RESET_KEEP for c in sqbyl_dir.iterdir()):
+        print("  keeping: usage.db (cost history), calibration.jsonl (judge review)")
+    if not assume_yes and not _confirm("Proceed?"):
+        print("  aborted.")
+        return 0
+
+    for c in targets:
+        if c.is_dir():
+            shutil.rmtree(c)
+        else:
+            c.unlink()
+    if reset_all:
+        sqbyl_dir.rmdir()  # everything was a target; remove the now-empty dir too
+    print(
+        "▸ done. authored files (sqbyl.yaml, semantics/, benchmarks/) are untouched — "
+        "use git to revert those."
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args and args[0] in {"-V", "--version", "version"}:
@@ -1617,9 +1680,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run(args[1:])
     if args and args[0] == "import":
         return _import(args[1:])
+    if args and args[0] == "reset":
+        return _reset(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, release, optimize, serve, run, import, schema export, version"
+        "coach, cost, report, release, optimize, serve, run, import, reset, schema export, "
+        "version"
     )
     return 0
 

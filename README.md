@@ -170,6 +170,7 @@ sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop
 sqbyl ask "..."           # one-shot NL→SQL→result
 sqbyl release create --tag v1             # bless current version → portable JSON
 sqbyl cost <command>      # estimate $ / tokens, spend nothing
+sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)
 ```
 
 Per-step à-la-carte commands (`introspect`, `profile`, `annotate`, `judge`, `runs`, `serve`, `run`) are documented in [the spec, §10](sqbyl-design-spec.md).
