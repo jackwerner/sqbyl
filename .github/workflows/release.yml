@@ -21,10 +21,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
 
@@ -37,13 +37,23 @@ jobs:
       - name: Build sqbyl
         run: uv build --package sqbyl --out-dir dist-sqbyl
 
+      - name: Generate SBOM (CycloneDX)
+        # A machine-readable bill of materials of the deployable dependency tree, for
+        # downstream supply-chain audits. Attached to the GitHub Release below.
+        run: |
+          uv export --frozen --no-emit-workspace --no-editable \
+            --format requirements-txt > requirements-sbom.txt
+          uvx --from cyclonedx-bom cyclonedx-py requirements requirements-sbom.txt \
+            -o sbom.cdx.json
+
       - name: Upload distributions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: distributions
           path: |
             dist-runtime/
             dist-sqbyl/
+            sbom.cdx.json
 
   publish-runtime:
     # Publish the runtime first — the toolkit pins it exactly, so it must exist on PyPI
@@ -56,12 +66,12 @@ jobs:
     permissions:
       id-token: write # OIDC token for Trusted Publishing
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: distributions
 
       - name: Publish sqbyl-runtime to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
         with:
           packages-dir: dist-runtime/
 
@@ -74,12 +84,12 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: distributions
 
       - name: Publish sqbyl to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
         with:
           packages-dir: dist-sqbyl/
 
@@ -89,13 +99,20 @@ jobs:
     permissions:
       contents: write # create the GitHub Release for this tag
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: distributions
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+        # Attach the SBOM so it's downloadable alongside the release.
         run: >
           gh release create "${{ github.ref_name }}"
           --title "${{ github.ref_name }}"
           --notes "See [CHANGELOG.md](CHANGELOG.md) for release notes."
           --verify-tag
+          sbom.cdx.json
