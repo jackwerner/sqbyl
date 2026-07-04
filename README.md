@@ -201,9 +201,10 @@ database:
 model:
   api_key: env:ANTHROPIC_API_KEY
   default: claude-opus-4-8    # per-role models (agent/judge/coach/...) override default
+  # base_url: env:CLAUDE_GATEWAY   # optional: route Claude through a proxy / AI gateway
 ```
 
-See [§4 of the spec](sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles.
+See [§4 of the spec](sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles. To route through a corporate proxy or AI gateway, set `model.base_url` (or pass `base_url=` to the runtime `load()`) — no other change needed.
 
 ---
 
