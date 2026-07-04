@@ -78,6 +78,8 @@ pip install sqbyl           # full dev toolkit
 pip install sqbyl-runtime   # the lightweight "ship it" runtime only
 ```
 
+Maintainers: [`PUBLISHING.md`](PUBLISHING.md) has the step-by-step for cutting a release.
+
 ---
 
 ## Quickstart

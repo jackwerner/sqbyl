@@ -47,7 +47,7 @@ The current README is written for an individual cloning-and-hacking. Retarget it
 - **Add a security & data-handling section** (links to §6.1–6.4 below): read-only by default, credentials via `env:`/secret manager, no row data in committed files or traces, local-first traces exportable to OTel, CI never spends tokens. This is the section a security reviewer will grep for.
 - Keep the honest-uncertainty tone; that *is* the brand. "Enterprise" here means precise, not corporate-bland.
 
-### 1.3 Publish docs / tutorials (GitHub Pages) — **L, P1**
+### 1.3 Publish docs / tutorials (GitHub Pages) — **L, P1** — ⏸ deferred to post-public (by decision)
 Three long `.md` files at the repo root (design spec, user journey, implementation plan) are great references but aren't navigable docs.
 - Stand up a docs site — **MkDocs (Material)** or **Docusaurus**. MkDocs is lighter and Python-native (fits the `uv` toolchain); Docusaurus if we want versioned docs + search out of the box.
 - Structure: *Getting started* → *Concepts* (the loop, dev/test discipline, the context hierarchy) → *CLI reference* (generated from the `argparse`/command table where possible) → *Runtime embedding guide* → *Configuration reference* (generated from the pydantic models — see invariant 2, we already have the schemas) → *Tutorials*.
@@ -107,7 +107,7 @@ Difficulty, tiered by target:
 
 ### 3.1 When to start versioning + how to get onto PyPI / `uv` — **M, P0-for-1.0** — ◐ in-repo work done
 > **Status (in-repo, done):** both packages bumped to `0.1.0`; `sqbyl` pins `sqbyl-runtime==0.1.0` (lockstep, verified in wheel metadata); `py.typed` markers added so downstream type-checkers see the packages' types; PyPI metadata (keywords, classifiers, project URLs); `CHANGELOG.md` (Keep-a-Changelog); a Trusted-Publishing release workflow (`.github/workflows/release.yml`) that builds both and publishes on a `v*` tag. Both dists pass `twine check`.
-> **Still needs a human (PyPI-side):** (1) reserve `sqbyl` + `sqbyl-runtime` on PyPI; (2) register a Trusted Publisher for each package (this repo, workflow `release.yml`, environment `pypi`); (3) do a live-API smoke test of the real Anthropic client before the first tag (CI can't — mock/replay only), given the recent `anthropic` floor bump. Then push a `v0.1.0` tag to publish.
+> **Still needs a human (PyPI-side):** register a Trusted Publisher per package + tag `v0.1.0`. Full step-by-step written up in [`PUBLISHING.md`](PUBLISHING.md) (accounts → pending publishers → `pypi` environment → live-API smoke test → tag → verify → later releases → troubleshooting).
 
 Both packages sit at `version = "0.0.0"` and the README says "not yet published." Recommendation:
 - **Start versioning now, at `0.1.0`**, using SemVer, the moment we're willing to let anyone `pip install` it. Phases 0–9 being complete is the natural trigger — the CLI surface and file formats are stable enough to name.
