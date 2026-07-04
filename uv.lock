@@ -1935,7 +1935,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.0" },
     { name = "duckdb-engine", specifier = ">=0.13" },
     { name = "langchain-core", marker = "extra == 'langchain'", specifier = ">=0.3" },
-    { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.1" },
+    { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.3.4" },
     { name = "pydantic", specifier = ">=2.7,<3" },
     { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1" },
     { name = "snowflake-sqlalchemy", marker = "extra == 'snowflake'", specifier = ">=1.5" },
