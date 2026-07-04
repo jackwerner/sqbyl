@@ -4,7 +4,7 @@
 
 Bring your own database. Bring one Anthropic API key. sqbyl uses Claude to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
 
-> **Status: pre-release / under active development.** This README describes the intended workflow. Some commands and packages below are not built yet — see [Project status](#project-status) for what works today. The design is fully specified in [`sqbyl-design-spec.md`](sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md).
+> **Status: pre-release / not yet on PyPI.** The full toolkit (Phases 0–9) is built and tested; install is from source for now, and command/file shapes may still change before a first tagged release. See [Project status](#project-status) for the capability map. The design is fully specified in [`sqbyl-design-spec.md`](sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md).
 
 ---
 
@@ -205,26 +205,29 @@ See [§4 of the spec](sqbyl-design-spec.md) for the full manifest, including per
 
 ## Project status
 
-This is being built milestone by milestone. Roughly:
+The full build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) (Phases 0–9) is complete: every capability below is built, tested, and merged.
 
 | Capability | State |
 |---|---|
-| Engine: introspect + profile + agent runtime (`sqbyl ask`) | 🔜 in progress |
-| Golden set + eval harness (`synth`, `review`, `eval`) | 🔜 planned |
-| Coach + LLM judges | 🔜 planned |
-| Guided `init`, orchestrator, cost machinery | 🔜 planned |
-| Release + runtime + optimizer | 🔜 planned |
-| More dialects, serve, exports | 🔜 later |
+| Engine: introspect + profile + agent runtime (`sqbyl ask`) | ✅ built |
+| Golden set + eval harness (`synth`, `review`, `eval`) | ✅ built |
+| Coach + LLM judges | ✅ built |
+| Guided `init`, orchestrator, cost machinery | ✅ built |
+| Release + runtime + optimizer | ✅ built |
+| More dialects, serve, exports, importers | ✅ built |
 
-The authoritative, ordered build sequence is in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md). Expect commands and file shapes to change until a first tagged release.
+**Not yet released to PyPI**, so commands and file shapes may still change before a first tagged version — see [`sqbyl-enhancements.md`](sqbyl-enhancements.md) for the post-implementation backlog (packaging, docs, enterprise-readiness).
 
 ---
 
 ## Documentation
 
+The spec is the *why*, the journey is a *narrated first run*, and the plan is a record of *how it was built*:
+
 - [`sqbyl-design-spec.md`](sqbyl-design-spec.md) — the full product design specification.
 - [`sqbyl-user-journey.md`](sqbyl-user-journey.md) — a narrated first run, start to ship.
-- [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) — the phased technical build plan.
+- [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) — the phased build sequence (Phases 0–9, complete).
+- [`sqbyl-enhancements.md`](sqbyl-enhancements.md) — the post-implementation backlog (packaging, docs, enterprise-readiness).
 
 ## License
 

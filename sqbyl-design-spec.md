@@ -405,7 +405,7 @@ This is the same posture as the spend meter (§9): make the economics and qualit
 
 ## 8. The Coach — LLM-assisted iteration (headline feature)
 
-The thing the user specifically wants: *Databricks recommends instructions and prompt tweaks; the open-source version should do the same, using the same Claude model and key.*
+The core idea: *where a closed platform recommends instructions and prompt tweaks, sqbyl does the same in the open — using the same Claude model and key that already power the agent.*
 
 **Input to the Coach (per eval run):** for each failing or manual-review question **in the dev set** (the Coach is never shown `test.yaml`) — the NL question, retrieved context that was actually shown to the agent, the agent's chain-of-thought, its generated SQL, the gold SQL/asset, the scorer verdicts and rationales, and any execution error. Plus the *current* project files and the inherited best-practice rubric (examples > semantics > prose; keep instructions minimal and non-conflicting; prefer trusted assets; small focused table set).
 
@@ -547,7 +547,7 @@ Once your benchmark score is where you want it, you need to be able to say *"thi
 - the database connection (staging DB, prod replica — your call)
 - runtime resources
 
-`sqbyl release create --tag v3` compiles the working project into **a single self-contained JSON file** (`revenue-analytics.v3.json`) stamped with the score that made you pick it. JSON because this is an open-source, public project: a release is a portable, human-readable, diffable artifact anyone can email, drop in object storage, commit, or load from another language — not a tool-specific binary. The schema is a **documented, versioned public interface** (`schema_version` in the manifest), so third parties can read, generate, or serve releases without sqbyl itself. The artifact is the unit you move to production. There is deliberately **no model freezing, no output-replay, and no CICD opinion** — you explicitly want to stay free to change the model or the database, and the brain/body split is what makes that safe. "Promote" is just choosing which release JSON is live; in the simplest case it is "copy this file to prod, set its `DATABASE_URL` and `ANTHROPIC_API_KEY`, done."
+`sqbyl release create --tag v3` compiles the working project into **a single self-contained JSON file** (`revenue-analytics.v3.json`) stamped with the score that made you pick it. JSON because this is an open-source, public project: a release is a portable, human-readable, diffable artifact anyone can email, drop in object storage, commit, or load from another language — not a tool-specific binary. The schema is a **documented, versioned public interface** (`schema_version` in the manifest), so third parties can read, generate, or serve releases without sqbyl itself. The artifact is the unit you move to production. There is deliberately **no model freezing, no output-replay, and no CICD opinion** — the goal is to stay free to change the model or the database, and the brain/body split is what makes that safe. "Promote" is just choosing which release JSON is live; in the simplest case it is "copy this file to prod, set its `DATABASE_URL` and `ANTHROPIC_API_KEY`, done."
 
 A release JSON is roughly:
 ```json

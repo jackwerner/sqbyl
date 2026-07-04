@@ -2,6 +2,8 @@
 
 *A chronological, phase-by-phase build sequence for developing sqbyl with Claude Code. Companion to `sqbyl-design-spec.md` and `sqbyl-user-journey.md`. Optimized for ordering and dependency-unblocking, not calendar scheduling.*
 
+> **Status: all phases complete.** Phases 0–9 below are built, tested, and merged — this document now reads as a record of *how* sqbyl was built, in dependency order. Its imperative phrasing ("build X before Y", "don't build Z yet") is preserved as the original build guidance; it is not a to-do list. Forward-looking work lives in [`sqbyl-enhancements.md`](sqbyl-enhancements.md).
+
 ---
 
 ## How to read this plan
