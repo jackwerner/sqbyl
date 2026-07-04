@@ -22,7 +22,7 @@ jobs:
       # fail fast rather than silently reach for an ambient key.
       ANTHROPIC_API_KEY: ""
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -55,7 +55,7 @@ jobs:
     # Runs alongside `quality`, never spends API tokens (invariant 4).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
