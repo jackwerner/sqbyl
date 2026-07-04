@@ -10,6 +10,13 @@ from here — that one-way dependency arrow is enforced by import-linter in CI.
     agent.ask("How many orders shipped last month?")   # → AgentResult
 """
 
+from sqbyl_runtime.export import (
+    McpServer,
+    answer_dict,
+    as_callable,
+    langchain_tool,
+    serve_mcp_stdio,
+)
 from sqbyl_runtime.runtime import (
     Agent,
     ModelMismatchWarning,
@@ -21,8 +28,13 @@ __version__ = "0.0.0"
 
 __all__ = [
     "Agent",
+    "McpServer",
     "ModelMismatchWarning",
     "SchemaMismatchWarning",
+    "answer_dict",
+    "as_callable",
+    "langchain_tool",
     "load",
+    "serve_mcp_stdio",
     "__version__",
 ]

@@ -1353,30 +1353,119 @@ def _serve(args: list[str]) -> int:
 
 
 def _run(args: list[str]) -> int:
-    """`sqbyl run <release.json> --db URL --model M [--host] [--port] [--budget] [--root DIR]`."""
+    """`sqbyl run <release.json> --db URL --model M [--mcp] [--host] [--port] [--budget] [--root]`.
+
+    Default: an HTTP chat server (like `serve`, but over a release). ``--mcp`` instead serves
+    the release as an MCP tool over stdio (for an MCP client to launch as a subprocess).
+    """
     from pathlib import Path
 
     from sqbyl.serve import ChatServer, release_endpoint
     from sqbyl_runtime.state.layout import SqbylPaths
 
     positional = [a for a in args if not a.startswith("-")]
+    mcp = "--mcp" in args
     db = _opt(args, "db")
     model = _opt(args, "model")
     root = _opt(args, "root") or "."
     host = _opt(args, "host") or "127.0.0.1"
     port = int(_opt(args, "port") or "8765")
+    row_cap = int(_opt(args, "row-cap") or "100")
     budget_parse = _budget_opts(args)
     if budget_parse is None:
         return 2
     budget, _auto, _dry = budget_parse
-    known = {db, model, root, host, str(port)} | ({str(budget)} if budget is not None else set())
+    known = {db, model, root, host, str(port), str(row_cap)}
+    known |= {str(budget)} if budget is not None else set()
     rel = [p for p in positional if p not in known]
     if not rel or db is None or model is None:
-        print("usage: sqbyl run <release.json> --db URL --model MODEL [--port N] [--budget $X]")
+        print("usage: sqbyl run <release.json> --db URL --model MODEL [--mcp] [--budget $X]")
         return 2
+    if mcp:
+        # An MCP server is an autonomous, human-out-of-the-loop paid consumer (a downstream
+        # agent decides call volume), so it must have a hard cap — the same rule optimize and
+        # --auto enforce (responsible-ai). The interactive HTTP path has a human, so it doesn't.
+        if budget is None:
+            print(
+                "--mcp requires --budget $N: an MCP client makes unbounded paid calls with no "
+                "human in the loop, so it must have a hard cap to stop at"
+            )
+            return 2
+        return _run_mcp(rel[0], db=db, model=model, root=root, budget=budget, row_cap=row_cap)
     endpoint = release_endpoint(rel[0], db=db, model=model, project_root=root)
     chat = ChatServer(endpoint, paths=SqbylPaths(Path(root)), budget=budget)
     return _serve_forever(chat, host=host, port=port, budget=budget)
+
+
+def _run_mcp(
+    release: str, *, db: str, model: str, root: str, budget: float | None, row_cap: int = 100
+) -> int:
+    """Serve a release as an MCP tool over stdio, metering each tool call to usage.db.
+
+    ``row_cap`` bounds how many result rows are returned to the MCP client (0 = SQL + row
+    count only, no rows) — since an MCP consumer is a downstream LLM/app, not the data
+    owner's own browser, this lets a launch dial down how much real data leaves.
+    """
+    from pathlib import Path
+
+    from sqbyl.serve import price_usage_estimate
+    from sqbyl_runtime.cost import SpendMeter
+    from sqbyl_runtime.export import answer_dict, serve_mcp_stdio
+    from sqbyl_runtime.runtime import load
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.traces import TraceWriter
+    from sqbyl_runtime.state.usage import UsageRecord, UsageStore
+
+    paths = SqbylPaths(Path(root)).ensure()
+    agent = load(
+        release, db=db, model=model, trace_writer=TraceWriter(paths.traces_dir / "mcp.jsonl")
+    )
+    meter = SpendMeter(budget=budget, store=None, command="run")
+    est = price_usage_estimate(model)
+
+    def _metered(question: str) -> dict[str, object]:
+        # Budget hard-stop before spending — an unbounded MCP session can't silently overspend.
+        if meter.would_exceed(est):
+            return {
+                "ok": False,
+                "sql": "",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "used_assets": [],
+                "error": f"session budget ${budget:.2f} reached (${meter.spent:.4f} spent)",
+                "trace_id": "",
+            }
+        result = agent.ask(question)
+        cost = meter.record(result.usage, model=model, role="agent", run_id=result.trace_id)
+        with UsageStore(paths.usage_db) as store:
+            store.record(
+                UsageRecord.from_usage(
+                    result.usage,
+                    model=model,
+                    command="run",
+                    role="agent",
+                    cost_usd=cost,
+                    run_id=result.trace_id,
+                )
+            )
+        return answer_dict(result, row_cap=row_cap)
+
+    # stdio carries the JSON-RPC protocol; status/consent goes to stderr so it never
+    # corrupts the protocol stream on stdout.
+    rows_note = f"up to {row_cap} result rows" if row_cap else "no result rows (SQL + count only)"
+    print(
+        f"▸ sqbyl MCP server for {Path(release).name} on stdio — each tool call is a paid LLM "
+        f"call (~${est:.4f} est on {model}) · session cap ${budget:.2f} · returns {rows_note} "
+        "to the MCP client",
+        file=sys.stderr,
+    )
+    try:
+        serve_mcp_stdio(agent, call=_metered)
+    finally:
+        agent.close()
+    return 0
 
 
 def _serve_forever(chat: object, *, host: str, port: int, budget: float | None) -> int:

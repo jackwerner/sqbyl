@@ -52,7 +52,9 @@ packages = ["sqbyl", "sqbyl_runtime"]
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["duckdb.*"]
+# duckdb has no stubs; langchain_core is an optional export extra (lazily imported in
+# sqbyl_runtime.export) that isn't installed in the dev/CI env.
+module = ["duckdb.*", "langchain_core.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------

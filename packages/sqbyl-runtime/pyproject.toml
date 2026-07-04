@@ -24,6 +24,9 @@ postgres = ["psycopg[binary]>=3.1"]
 mysql = ["pymysql>=1.1"]
 snowflake = ["snowflake-sqlalchemy>=1.5"]
 bigquery = ["sqlalchemy-bigquery>=1.9"]
+# Export a release as a LangChain tool (sqbyl_runtime.langchain_tool). Optional — the MCP
+# and plain-callable export shapes need no extra dependency.
+langchain = ["langchain-core>=0.3"]
 
 [build-system]
 requires = ["hatchling"]
