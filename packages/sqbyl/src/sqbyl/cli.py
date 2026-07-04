@@ -1330,6 +1330,254 @@ def _report_init_arrival(result: EnrichmentResult) -> int:
     return 0
 
 
+def _serve(args: list[str]) -> int:
+    """`sqbyl serve [DIR] [--host H] [--port N] [--budget $X]` — local chat over the project."""
+    from sqbyl.project import Project
+    from sqbyl.serve import ChatServer, project_endpoint
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    host = _opt(args, "host") or "127.0.0.1"
+    port = int(_opt(args, "port") or "8765")
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, _auto, _dry = budget_parse
+    positional = [a for a in args if not a.startswith("-")]
+    # Drop values consumed by --host/--port/--budget so a bare DIR is what remains.
+    consumed = {host, str(port)} | ({str(budget)} if budget is not None else set())
+    positional = [p for p in positional if p not in consumed]
+    project = Project.load(positional[0] if positional else ".")
+    endpoint = project_endpoint(project)
+    chat = ChatServer(endpoint, paths=SqbylPaths(project.root), budget=budget)
+    return _serve_forever(chat, host=host, port=port, budget=budget)
+
+
+def _run(args: list[str]) -> int:
+    """`sqbyl run <release.json> --db URL --model M [--mcp] [--host] [--port] [--budget] [--root]`.
+
+    Default: an HTTP chat server (like `serve`, but over a release). ``--mcp`` instead serves
+    the release as an MCP tool over stdio (for an MCP client to launch as a subprocess).
+    """
+    from pathlib import Path
+
+    from sqbyl.serve import ChatServer, release_endpoint
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    positional = [a for a in args if not a.startswith("-")]
+    mcp = "--mcp" in args
+    db = _opt(args, "db")
+    model = _opt(args, "model")
+    root = _opt(args, "root") or "."
+    host = _opt(args, "host") or "127.0.0.1"
+    port = int(_opt(args, "port") or "8765")
+    row_cap = int(_opt(args, "row-cap") or "100")
+    budget_parse = _budget_opts(args)
+    if budget_parse is None:
+        return 2
+    budget, _auto, _dry = budget_parse
+    known = {db, model, root, host, str(port), str(row_cap)}
+    known |= {str(budget)} if budget is not None else set()
+    rel = [p for p in positional if p not in known]
+    if not rel or db is None or model is None:
+        print("usage: sqbyl run <release.json> --db URL --model MODEL [--mcp] [--budget $X]")
+        return 2
+    if mcp:
+        # An MCP server is an autonomous, human-out-of-the-loop paid consumer (a downstream
+        # agent decides call volume), so it must have a hard cap — the same rule optimize and
+        # --auto enforce (responsible-ai). The interactive HTTP path has a human, so it doesn't.
+        if budget is None:
+            print(
+                "--mcp requires --budget $N: an MCP client makes unbounded paid calls with no "
+                "human in the loop, so it must have a hard cap to stop at"
+            )
+            return 2
+        return _run_mcp(rel[0], db=db, model=model, root=root, budget=budget, row_cap=row_cap)
+    endpoint = release_endpoint(rel[0], db=db, model=model, project_root=root)
+    chat = ChatServer(endpoint, paths=SqbylPaths(Path(root)), budget=budget)
+    return _serve_forever(chat, host=host, port=port, budget=budget)
+
+
+def _run_mcp(
+    release: str, *, db: str, model: str, root: str, budget: float | None, row_cap: int = 100
+) -> int:
+    """Serve a release as an MCP tool over stdio, metering each tool call to usage.db.
+
+    ``row_cap`` bounds how many result rows are returned to the MCP client (0 = SQL + row
+    count only, no rows) — since an MCP consumer is a downstream LLM/app, not the data
+    owner's own browser, this lets a launch dial down how much real data leaves.
+    """
+    from pathlib import Path
+
+    from sqbyl.serve import price_usage_estimate
+    from sqbyl_runtime.cost import SpendMeter
+    from sqbyl_runtime.export import answer_dict, serve_mcp_stdio
+    from sqbyl_runtime.runtime import load
+    from sqbyl_runtime.state.layout import SqbylPaths
+    from sqbyl_runtime.state.traces import TraceWriter
+    from sqbyl_runtime.state.usage import UsageRecord, UsageStore
+
+    paths = SqbylPaths(Path(root)).ensure()
+    agent = load(
+        release, db=db, model=model, trace_writer=TraceWriter(paths.traces_dir / "mcp.jsonl")
+    )
+    meter = SpendMeter(budget=budget, store=None, command="run")
+    est = price_usage_estimate(model)
+
+    def _metered(question: str) -> dict[str, object]:
+        # Budget hard-stop before spending — an unbounded MCP session can't silently overspend.
+        if meter.would_exceed(est):
+            return {
+                "ok": False,
+                "sql": "",
+                "columns": [],
+                "rows": [],
+                "row_count": 0,
+                "truncated": False,
+                "used_assets": [],
+                "error": f"session budget ${budget:.2f} reached (${meter.spent:.4f} spent)",
+                "trace_id": "",
+            }
+        result = agent.ask(question)
+        cost = meter.record(result.usage, model=model, role="agent", run_id=result.trace_id)
+        with UsageStore(paths.usage_db) as store:
+            store.record(
+                UsageRecord.from_usage(
+                    result.usage,
+                    model=model,
+                    command="run",
+                    role="agent",
+                    cost_usd=cost,
+                    run_id=result.trace_id,
+                )
+            )
+        return answer_dict(result, row_cap=row_cap)
+
+    # stdio carries the JSON-RPC protocol; status/consent goes to stderr so it never
+    # corrupts the protocol stream on stdout.
+    rows_note = f"up to {row_cap} result rows" if row_cap else "no result rows (SQL + count only)"
+    print(
+        f"▸ sqbyl MCP server for {Path(release).name} on stdio — each tool call is a paid LLM "
+        f"call (~${est:.4f} est on {model}) · session cap ${budget:.2f} · returns {rows_note} "
+        "to the MCP client",
+        file=sys.stderr,
+    )
+    try:
+        serve_mcp_stdio(agent, call=_metered)
+    finally:
+        agent.close()
+    return 0
+
+
+def _serve_forever(chat: object, *, host: str, port: int, budget: float | None) -> int:
+    """Start the HTTP server and block until interrupted; shared by serve and run."""
+    from sqbyl.serve import ChatServer, is_local_host, make_server, price_usage_estimate
+
+    assert isinstance(chat, ChatServer)
+    per_call = price_usage_estimate(chat.endpoint.model)
+    server = make_server(chat, host=host, port=port)
+    print(f"▸ sqbyl serving {chat.endpoint.label} on http://{host}:{port}")
+    print(
+        f"  each question is a paid call (~${per_call:.4f} est on {chat.endpoint.model}), "
+        f"metered to .sqbyl/usage.db"
+        + (f" · session cap ${budget:.2f}" if budget is not None else "")
+    )
+    if not is_local_host(host):
+        # Not hardened: no auth, no TLS, no rate limiting. Binding off-localhost exposes the
+        # user's database to anyone who can reach the port (spec §9.2).
+        print(
+            f"  ⚠ bound to {host} (not localhost): this server has NO auth and is not hardened — "
+            "do not expose it on an untrusted network."
+        )
+    print("  press Ctrl-C to stop.")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n▸ stopping…")
+    finally:
+        server.shutdown()
+        server.server_close()
+        chat.close()
+    return 0
+
+
+def _import(args: list[str]) -> int:
+    """`sqbyl import {dbt <compiled_dir>|queries <file>|views} [DIR]` — seed from existing SQL.
+
+    Deterministic and $0: execution-grounds each source query into a review candidate and
+    proposes the joins it observed. Writes candidates to the review queue; prints the joins
+    to add to semantics after review.
+    """
+    from pathlib import Path
+
+    from sqbyl.candidates_io import add_candidates
+    from sqbyl.importers import (
+        import_queries,
+        queries_from_dbt,
+        queries_from_views,
+        split_sql_statements,
+    )
+    from sqbyl.project import Project
+
+    positional = [a for a in args if not a.startswith("-")]
+    if not positional:
+        print("usage: sqbyl import {dbt <dir>|queries <file>|views} [DIR]")
+        return 2
+    kind = positional[0]
+    project = Project.load(positional[-1] if len(positional) > 2 else ".")
+    dialect = project.manifest.database.dialect
+
+    if kind == "dbt":
+        if len(positional) < 2:
+            print("usage: sqbyl import dbt <target/compiled dir> [DIR]")
+            return 2
+        inputs = queries_from_dbt(positional[1], dialect=dialect)
+    elif kind == "queries":
+        if len(positional) < 2:
+            print("usage: sqbyl import queries <file.sql> [DIR]")
+            return 2
+        inputs = split_sql_statements(Path(positional[1]).read_text(), dialect=dialect)
+    elif kind == "views":
+        inputs = []  # populated from the DB below
+    else:
+        print(f"unknown import source {kind!r}; expected dbt, queries, or views")
+        return 2
+
+    with project.connect() as db:
+        if kind == "views":
+            inputs = queries_from_views(db)
+        if not inputs:
+            print(f"▸ no importable queries found for '{kind}'")
+            return 0
+        print(f"▸ importing {len(inputs)} quer(y/ies) from '{kind}' (deterministic, $0)…")
+        result = import_queries(inputs, db=db, dialect=dialect)
+
+    if result.candidates:
+        add_candidates(project, result.candidates)
+        print(f"  ✓ {result.n_candidates} example candidate(s) → review with `sqbyl review`")
+        with_literals = sum(1 for c in result.candidates if "contains-literals" in c.tags)
+        if with_literals and kind in ("queries", "views"):
+            # Imported production SQL may bake in real values (possibly PII) that would land in
+            # the git-committed dev.yaml on accept — surface it before the human accepts.
+            print(
+                f"  ⚠ {with_literals} candidate(s) contain SQL literals (tagged "
+                "`contains-literals`) — review may include real/PII values; redact before "
+                "accepting into dev.yaml"
+            )
+    if result.dropped:
+        print(f"  ⚠ {len(result.dropped)} query(ies) dropped (didn't run / empty result)")
+    needs_q = sum(1 for c in result.candidates if "needs-question" in c.tags)
+    if needs_q:
+        print(f"  · {needs_q} candidate(s) need a question written (no source label)")
+    if result.joins:
+        print(f"\n  {result.n_joins} proposed join(s) (add to semantics after review):")
+        for j in result.joins:
+            print(
+                f"    {j.from_table} ⋈ {j.to_table}  ON {j.on}  "
+                f"[seen ×{j.hits}, confidence {j.confidence:.2f}]"
+            )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     if args and args[0] in {"-V", "--version", "version"}:
@@ -1363,9 +1611,15 @@ def main(argv: list[str] | None = None) -> int:
         return _release(args[1:])
     if args and args[0] == "optimize":
         return _optimize(args[1:])
+    if args and args[0] == "serve":
+        return _serve(args[1:])
+    if args and args[0] == "run":
+        return _run(args[1:])
+    if args and args[0] == "import":
+        return _import(args[1:])
     print(
         "sqbyl: commands — init, introspect, profile, annotate, ask, eval, synth, review, "
-        "coach, cost, report, release, optimize, schema export, version"
+        "coach, cost, report, release, optimize, serve, run, import, schema export, version"
     )
     return 0
 

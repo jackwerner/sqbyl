@@ -1,0 +1,110 @@
+{
+  "entries": {
+    "300583bdc694c6a729db9e8b9a8192b939a27b38bb97e90916d77501ef90d8e3": {
+      "request": {
+        "cache_system": true,
+        "max_tokens": 2048,
+        "messages": [
+          {
+            "content": "Question: How many orders are there in total?\n\nWrite a single read-only SELECT that answers it. Think briefly about which tables, measures, and trusted assets apply, then give the SQL.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "The strict-JSON object the model emits each attempt.",
+          "properties": {
+            "plan": {
+              "description": "A short chain-of-thought plan: which tables/measures/assets apply.",
+              "title": "Plan",
+              "type": "string"
+            },
+            "sql": {
+              "description": "A single read-only SELECT that answers the question.",
+              "title": "Sql",
+              "type": "string"
+            },
+            "used_assets": {
+              "description": "Names of any trusted assets you relied on (for citation). Empty if none.",
+              "items": {
+                "type": "string"
+              },
+              "title": "Used Assets",
+              "type": "array"
+            }
+          },
+          "required": [
+            "plan",
+            "sql"
+          ],
+          "title": "AgentGeneration",
+          "type": "object"
+        },
+        "system": "You are a careful duckdb SQL analyst. Answer questions by writing a single read-only SELECT, grounded in the semantic layer below. Prefer measures, filters, and trusted assets over ad-hoc arithmetic.\n\n# Instructions\n\nThis database tracks customer orders. Keep answers grounded in the semantic layer.\n\n- \"Revenue\" means **net revenue**: confirmed orders only, refunds excluded. Prefer\n  the `net_revenue` measure over ad-hoc arithmetic.\n- Monetary columns are stored in **cents**; divide by 100 to report dollars.\n- All timestamps are UTC. Relative windows (\"last month\") are relative to `now()`.\n- Prefer the `monthly_recurring_revenue` trusted asset for any MRR question.\n\n# Schema\n## analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders.\nsynonyms: purchases, transactions, sales\ncolumns:\n- order_id (bigint) \u2014 Primary key. [range: 1..2000]\n- customer_id (bigint) \u2014 FK to analytics.customers.customer_id. [range: 1..200]\n- amount_cents (bigint) \u2014 Order total in cents. Divide by 100 for dollars. [range: 127..310229]\n- status (text) \u2014 One of 'confirmed','refunded','partial_refund'. [values: confirmed, partial_refund, refunded]\n- created_at (timestamp) \u2014 Order confirmation time (UTC). [range: 2019-02-02..2026-06-28]\njoin: many_to_one -> analytics.customers ON orders.customer_id = customers.customer_id\nmeasure net_revenue: SUM(CASE WHEN status='confirmed' THEN amount_cents ELSE 0 END)/100.0  \u2014 Revenue net of refunds, in dollars.\nfilter last_quarter: created_at >= date_trunc('quarter', now()) - interval '3 months'\n\n# Trusted assets (prefer these over ad-hoc SQL; cite the one you use)\n## monthly_recurring_revenue(month date) \u2014 Official monthly net revenue. Prefer this over ad-hoc revenue math.\nSELECT SUM(amount_cents) / 100.0 AS net_revenue\nFROM analytics.orders\nWHERE status = 'confirmed'\n  AND created_at >= date_trunc('month', :month)\n  AND created_at <  date_trunc('month', :month) + interval '1 month';\n\n# Examples\nQ: What was net revenue last month?\nSQL:\nSELECT SUM(amount_cents)/100.0 AS net_revenue\nFROM analytics.orders\nWHERE status='confirmed'\n  AND created_at >= date_trunc('month', now()) - interval '1 month'\n  AND created_at <  date_trunc('month', now());\nQ: How many orders were refunded?\nSQL:\nSELECT COUNT(*) AS refunded_orders\nFROM analytics.orders\nWHERE status='refunded';\nQ: What is net revenue by region?\nSQL:\nSELECT c.region,\n       SUM(CASE WHEN o.status='confirmed' THEN o.amount_cents ELSE 0 END)/100.0 AS net_revenue\nFROM analytics.orders o\nJOIN analytics.customers c ON o.customer_id = c.customer_id\nGROUP BY c.region\nORDER BY net_revenue DESC;\n",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "claude-opus-4-8",
+        "stop_reason": "tool_use",
+        "structured": {
+          "plan": "Count every row in the orders table.",
+          "sql": "SELECT COUNT(*) AS total_orders FROM analytics.orders",
+          "used_assets": []
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 900,
+          "output_tokens": 40
+        }
+      }
+    },
+    "bc6430daebd135d1d7a938647d7ef8bb49da9f8d1c1796d6ea043c335eca262f": {
+      "request": {
+        "cache_system": false,
+        "max_tokens": 512,
+        "messages": [
+          {
+            "content": "Catalog of available tables:\n- analytics.customers \u2014 One row per customer. (aka accounts, users)\n- analytics.orders \u2014 One row per confirmed order. Excludes carts and draft orders. (aka purchases, transactions, sales)\n\nQuestion: How many orders are there in total?\n\nReturn the tables needed to answer it as a JSON list of exact table names.",
+            "role": "user"
+          }
+        ],
+        "model": "claude-opus-4-8",
+        "response_schema": {
+          "description": "Strict-JSON shape Claude returns from the shortlisting call.",
+          "properties": {
+            "tables": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Tables",
+              "type": "array"
+            }
+          },
+          "title": "_TableShortlist",
+          "type": "object"
+        },
+        "system": "You select which database tables are needed to answer a question. Return only the tables that are actually required \u2014 omit the rest. Never invent a table that is not in the catalog. When unsure between a few, include them; when a table is clearly irrelevant, leave it out.",
+        "temperature": 0.0
+      },
+      "response": {
+        "model": "claude-opus-4-8",
+        "stop_reason": "tool_use",
+        "structured": {
+          "tables": [
+            "analytics.orders"
+          ]
+        },
+        "text": null,
+        "usage": {
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "input_tokens": 300,
+          "output_tokens": 15
+        }
+      }
+    }
+  },
+  "version": 1
+}

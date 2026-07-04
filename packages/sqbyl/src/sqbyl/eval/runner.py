@@ -47,6 +47,7 @@ def score_run(
     knowledge: ProjectKnowledge,
     llm: LLMClient,
     model: str,
+    selection_model: str | None = None,
     split: str,
     asset_sql: dict[str, str] | None = None,
     as_of: datetime | None = None,
@@ -91,6 +92,7 @@ def score_run(
             db=db,
             llm=llm,
             model=model,
+            selection_model=selection_model,
             self_repair_attempts=self_repair_attempts,
             trace_writer=trace_writer,
         )
@@ -216,6 +218,7 @@ def run_eval(
     knowledge = load_knowledge(project)
     asset_sql = {a.name: a.sql for a in load_trusted_assets(project)}
     model = project.manifest.model.for_role("agent")
+    selection_model = project.manifest.model.for_role("selection")
     judge_on = project.manifest.automation.auto_judge if judge is None else judge
     with project.connect() as db:
         return score_run(
@@ -224,6 +227,7 @@ def run_eval(
             knowledge=knowledge,
             llm=llm,
             model=model,
+            selection_model=selection_model,
             split=split.value,
             asset_sql=asset_sql,
             as_of=as_of,

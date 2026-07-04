@@ -107,6 +107,32 @@ def test_write_sql_is_refused_not_executed(knowledge: ProjectKnowledge, db: Data
     db.close()
 
 
+def test_selection_fallback_surfaces_on_result_and_trace(
+    knowledge: ProjectKnowledge, db: Database, tmp_path: Path
+) -> None:
+    # Force an llm strategy whose shortlist returns nothing → fallback to include-all.
+    from sqbyl_runtime.models import SelectionConfig
+
+    narrowed = knowledge.model_copy(update={"selection": SelectionConfig(strategy="llm")})
+    writer = TraceWriter(tmp_path / "trace.jsonl")
+    llm = MockLLMClient(
+        [
+            structured_reply({"tables": []}),  # selection: matches nothing
+            _gen("SELECT COUNT(*) AS n FROM analytics.orders"),  # generate
+        ]
+    )
+    result = ask("count", knowledge=narrowed, db=db, llm=llm, model="m", trace_writer=writer)
+    # The degradation is legible on the result, not just buried in the compiler.
+    assert result.selection_fell_back is True
+    assert result.selection_strategy == "include_all"
+    assert any("matched no tables" in n for n in result.selection_notes)
+    # ...and on the run span, so it's auditable in the trace (invariant 7 / transparency).
+    run = next(s for s in read_spans(tmp_path / "trace.jsonl") if s.name == "ask")
+    assert run.attributes["sqbyl.selection.fell_back"] is True
+    assert run.attributes["sqbyl.selection.strategy"] == "include_all"
+    db.close()
+
+
 def test_run_writes_otel_trace(knowledge: ProjectKnowledge, db: Database, tmp_path: Path) -> None:
     writer = TraceWriter(tmp_path / "trace.jsonl")
     llm = MockLLMClient([_gen("SELECT COUNT(*) AS n FROM analytics.orders")])
