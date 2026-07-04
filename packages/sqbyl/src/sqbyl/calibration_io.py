@@ -4,7 +4,7 @@ Every time a human confirms or overrides a judged row in the review console, we 
 :class:`CalibrationRecord` here: what the judge suggested, what the human decided, and
 whether they agreed. Accumulated, these give the live **judge↔human agreement** score —
 the number that tells a curator how far to trust the judge on rows nobody has reviewed
-(the metric Databricks reports for its own judges).
+(standard inter-rater agreement between the LLM judge and human reviewers).
 
 Append-only JSONL: the calibration set is an audit trail, not mutable state, so a review
 is never silently rewritten. This is dev-loop data (it only exists because a human is

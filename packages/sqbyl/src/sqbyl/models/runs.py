@@ -341,8 +341,9 @@ class CalibrationRecord(SqbylModel):
 class JudgeAgreement(SqbylModel):
     """The judge↔human agreement rate over the calibration set (spec §7).
 
-    Databricks reports this for its own judges; sqbyl makes it live and local. ``rate`` is
-    ``None`` until at least one judged row has been reviewed (no data ⇒ no claim).
+    Standard inter-rater agreement between the LLM judge and human reviewers, made live and
+    local. ``rate`` is ``None`` until at least one judged row has been reviewed (no data ⇒ no
+    claim).
 
     **Selection-biased, by construction.** It is measured only over the ``manual_review``
     rows a human chose to open — the disputed pile the judge flagged, not a random sample —
