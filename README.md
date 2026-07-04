@@ -20,8 +20,6 @@ sqbyl is the middle path. It reproduces the **build → evaluate → get told ho
 - **Versioned like code.** Your whole "agent" is a directory of YAML you diff, review, and `git revert`.
 - **Defensible by design.** The headline accuracy is deterministic and measured on a *held-out* set the improvement loop can never touch — so "we hit 94%" is a claim that survives scrutiny, not a benchmark you overfit. ([more below](#built-for-defensible-ml-systems))
 
-sqbyl deliberately does **not** reimplement governance, RBAC, or catalog management — that's your database's job. See [non-goals](sqbyl-design-spec.md#non-goals).
-
 ---
 
 ## Built for defensible ML systems
@@ -46,9 +44,20 @@ The short version: **sqbyl helps you ship a text-to-SQL agent whose accuracy you
 
 ---
 
+## Architecture: two packages, one dependency arrow
+
+sqbyl ships as **two packages**, so what you develop with is not what you deploy:
+
+- **`sqbyl-runtime`** — the minimal, dependency-light runtime you embed in production: load a release, `ask()`, structured logging. No web stack, no eval machinery.
+- **`sqbyl`** — the full dev toolkit: introspect, profile, annotate, synth, the eval harness, the Coach, LLM judges, the review console, the optimizer, and the release builder.
+
+`sqbyl` depends on `sqbyl-runtime`, **never the reverse** — a one-way boundary enforced in CI (import-linter). None of the dev/eval machinery can leak into what runs in your app. You iterate with the toolkit; you ship the runtime. Both are strict-typed (`py.typed`) and pydantic-backed, and the release interface is a documented, `schema_version`'d JSON that a third party can read without sqbyl at all.
+
+---
+
 ## Who this is for
 
-You want to clone this and develop your own text-to-SQL pipeline against your data. You're comfortable with a CLI, a SQL database, and editing YAML. You have (or can make) a **read-only** database role and an Anthropic API key.
+You're putting a natural-language-to-SQL surface over your own warehouse — an internal analytics tool or a product feature — and you need an accuracy number you can defend, plus a system you can read, edit, and version. You work in git, a SQL database, and YAML. You have (or can provision) a **read-only** database role and an Anthropic API key.
 
 ---
 
@@ -179,7 +188,7 @@ Per-step à-la-carte commands (`introspect`, `profile`, `annotate`, `judge`, `ru
 
 ## Configuration
 
-Everything lives in `sqbyl.yaml`. Credentials never do — use `env:` indirection:
+Project configuration lives in `sqbyl.yaml`; secrets are referenced by `env:` name, not inlined:
 
 ```yaml
 name: revenue-analytics
@@ -196,11 +205,26 @@ See [§4 of the spec](sqbyl-design-spec.md) for the full manifest, including per
 
 ---
 
+## Security & data handling
+
+The section a security reviewer will look for:
+
+- **Read-only by default.** sqbyl refuses non-`SELECT` at the SQL layer and, on connect, inspects the credential's privileges and warns (with a suggested fix) if it can write. The agent and the Coach never issue DDL/DML. Point it at a dedicated read-only role.
+- **Secrets by reference.** Connection strings and API keys are `env:`-indirected — never written to project files, releases, or traces.
+- **Your data stays yours.** Query result rows are not persisted to committed project files or traces; imported SQL that carries literal values is flagged for review before it can land. A release is the agent's *brain* — semantics, prompts, examples — never rows.
+- **Local-first, exportable telemetry.** Traces follow the OpenTelemetry GenAI conventions and are written under `.sqbyl/`; export them to any OTel backend when you want.
+- **CI never spends tokens.** Every LLM path runs against a mock / record-replay seam, so continuous integration never calls the API. Dependencies are vulnerability-scanned (`pip-audit`), license-checked, and updated via Dependabot.
+- **Production hardening is yours.** You embed the runtime in your own service, inheriting its auth, TLS, pooling, and rate limiting. `sqbyl serve` is a localhost dev convenience, not a production server — don't expose it.
+
+Governance, RBAC, lineage, and catalog management are deliberately **not** reimplemented — that's your database's job ([non-goals](sqbyl-design-spec.md#non-goals)).
+
+---
+
 ## Requirements
 
 - Python (managed via [`uv`](https://github.com/astral-sh/uv))
 - An Anthropic API key (`ANTHROPIC_API_KEY`)
-- A SQL database, reachable read-only (`DATABASE_URL`). DuckDB and Postgres are the first-class dialects; others land later.
+- A SQL database, reachable read-only (`DATABASE_URL`). DuckDB and Postgres are the first-class dialects; SQLite, MySQL, Snowflake, and BigQuery are supported behind a dialect seam.
 
 ---
 
