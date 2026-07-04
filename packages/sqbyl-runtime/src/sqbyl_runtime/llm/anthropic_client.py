@@ -23,10 +23,19 @@ _STRUCTURED_TOOL = "emit_result"
 
 
 class AnthropicLLMClient(LLMClient):
-    def __init__(self, api_key: str | None = None, client: Any | None = None) -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        client: Any | None = None,
+        base_url: str | None = None,
+    ) -> None:
         # Allow injecting a pre-built SDK client (used by tests); otherwise build lazily.
+        # ``base_url`` points the SDK at an alternate Claude endpoint — a corporate proxy,
+        # an AI gateway (LiteLLM, Cloudflare), or a self-hosted relay — without changing
+        # anything else. It's a plain URL, not a secret.
         self._client = client
         self._api_key = api_key
+        self._base_url = base_url
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
@@ -41,7 +50,10 @@ class AnthropicLLMClient(LLMClient):
             import anthropic
         except ImportError as exc:  # pragma: no cover - import guard
             raise RuntimeError("the 'anthropic' package is required for the real client") from exc
-        self._client = anthropic.Anthropic(api_key=key)
+        kwargs: dict[str, Any] = {"api_key": key}
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
+        self._client = anthropic.Anthropic(**kwargs)
         return self._client
 
     def _system_param(self, request: LLMRequest) -> Any:

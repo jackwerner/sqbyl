@@ -25,6 +25,8 @@ Newest first. Items marked ✅ below are done; ◐ = partially landed.
 - ✅ **§5.4 live-Postgres CI** — service-container job + integration tests; **found & fixed a real read-only-enforcement bug** in the Postgres adapter (uncommitted session `SET`). Verified against live PG.
 - ✅ **§4.1 `sqbyl reset`** — clear local `.sqbyl/` state (keeps cost history + judge calibration unless `--all`).
 - ✅ **§1.2 README enterprise overhaul** — audience reframe + Architecture + Security sections; hand-holding trimmed ([PR #22](https://github.com/jackwerner/sqbyl/pull/22)).
+- ✅ **PyPI publishing guide** — [`PUBLISHING.md`](PUBLISHING.md), a first-timer walkthrough ([PR #24](https://github.com/jackwerner/sqbyl/pull/24)).
+- ◐ **§2.2 `base_url` passthrough** — route Claude through a proxy/gateway via `model.base_url` or `load(base_url=)`.
 
 **Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); `base_url` provider passthrough (§2.2, small — bring-your-own-Claude-endpoint/gateway); §5.1 polish (bandit / SBOM in release / pin actions by SHA); a GitHub Pages docs site (§1.3, larger).
 
@@ -86,7 +88,8 @@ model:
 - **Worth documenting** in the config reference — the per-role pinning is a real feature that's currently invisible.
 - **Worth considering (ML-systems):** using the *same* model as agent and judge risks correlated blind spots (the judge shares the agent's failure modes). The scorecard already stamps model-per-role for provenance; we should *document the recommendation* to pin a different judge model where independence matters, and note that the headline accuracy is deterministic anyway so this only affects the advisory judge layer. — **S, P1**
 
-### 2.2 Abstracting the LLM to OpenAI / Azure OpenAI / Bedrock / Vertex — **difficulty assessment**
+### 2.2 Abstracting the LLM to OpenAI / Azure OpenAI / Bedrock / Vertex — **difficulty assessment** — ◐ base_url done
+> **Status:** the `base_url` passthrough (the first tier below) shipped — `model.base_url` in the manifest (plain or `env:`) and `base_url=` on the runtime `load()` route the Claude client through a corporate proxy / AI gateway with no other change. Bedrock/Vertex Claude clients and non-Claude providers (OpenAI/Azure) remain as scoped below.
 The seam is already clean, which makes this **much easier than a from-scratch retrofit.** Everything goes through the `LLMClient` ABC ([`llm/base.py`](packages/sqbyl-runtime/src/sqbyl_runtime/llm/base.py:120)) with a single `complete(LLMRequest) -> LLMResponse`; structured output, caching, and usage accounting live *inside* the implementation, not in callers. `ModelConfig` even already carries a `provider: str = "anthropic"` field that is currently unused — the intended dispatch point.
 
 Difficulty, tiered by target:

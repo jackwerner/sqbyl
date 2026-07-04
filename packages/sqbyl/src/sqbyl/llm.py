@@ -17,11 +17,18 @@ from sqbyl_runtime.llm.base import LLMClient
 from sqbyl_runtime.llm.replay import RecordReplayLLMClient
 
 
-def _resolve_api_key(manifest: SqbylManifest) -> str | None:
-    raw = manifest.model.api_key.strip()
+def _resolve_env_ref(raw: str | None) -> str | None:
+    """Resolve an ``env:VAR`` reference to its value; pass a plain string through."""
+    if raw is None:
+        return None
+    raw = raw.strip()
     if raw.startswith("env:"):
         return os.environ.get(raw[len("env:") :])
     return raw or None
+
+
+def _resolve_api_key(manifest: SqbylManifest) -> str | None:
+    return _resolve_env_ref(manifest.model.api_key)
 
 
 def build_llm_client(
@@ -36,7 +43,10 @@ def build_llm_client(
     """
     if replay is not None:
         return RecordReplayLLMClient(replay, mode="replay")
-    real = AnthropicLLMClient(api_key=_resolve_api_key(manifest))
+    real = AnthropicLLMClient(
+        api_key=_resolve_api_key(manifest),
+        base_url=_resolve_env_ref(manifest.model.base_url),
+    )
     if record is not None:
         return RecordReplayLLMClient(record, mode="record", inner=real)
     return real

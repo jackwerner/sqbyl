@@ -96,6 +96,7 @@ def load(
     db: str | Database,
     model: str,
     api_key: str | None = None,
+    base_url: str | None = None,
     llm: LLMClient | None = None,
     read_only: bool = True,
     self_repair_attempts: int = 2,
@@ -108,7 +109,9 @@ def load(
     ``db`` is a connection URL (``env:`` indirection and bare DuckDB paths both work) or an
     already-open :class:`Database`. ``model`` is the agent model to run under — swap Claude
     for anything the :class:`LLMClient` seam supports by passing your own ``llm``; otherwise
-    the real Anthropic client is built from ``api_key`` (or ``$ANTHROPIC_API_KEY``).
+    the real Anthropic client is built from ``api_key`` (or ``$ANTHROPIC_API_KEY``). Pass
+    ``base_url`` to route that client through an alternate Claude endpoint — a corporate
+    proxy or an AI gateway — without any other change.
 
     Emits non-fatal :class:`SchemaMismatchWarning` / :class:`ModelMismatchWarning` when the
     injected DB or model has drifted from what the release was built and blessed on. Pass
@@ -132,7 +135,7 @@ def load(
         _warn_model_mismatch(artifact, model)
         _warn_schema_mismatch(artifact, database)
 
-    client = llm if llm is not None else AnthropicLLMClient(api_key=api_key)
+    client = llm if llm is not None else AnthropicLLMClient(api_key=api_key, base_url=base_url)
     return Agent(
         knowledge=knowledge,
         db=database,

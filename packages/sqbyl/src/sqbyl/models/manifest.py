@@ -39,6 +39,13 @@ class ModelConfig(SqbylModel):
 
     provider: str = "anthropic"
     api_key: str = Field(description="Prefer 'env:ANTHROPIC_API_KEY' indirection.")
+    base_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional alternate Claude endpoint (corporate proxy / AI gateway). "
+            "Plain URL or 'env:VAR'. Unset uses Anthropic's default."
+        ),
+    )
     default: str = "claude-opus-4-8"
     agent_model: str | None = None
     selection_model: str | None = None
