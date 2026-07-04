@@ -81,12 +81,13 @@ forbidden_modules = ["sqbyl"]
 # that imports `heldout` or the `runner` **directly** is still caught — the contract fails
 # closed on an actual violation while permitting the sanctioned eval door.
 [[tool.importlinter.contracts]]
-name = "the dev-loop (synth/console/coach/init) cannot read the held-out test set"
+name = "the dev-loop (synth/console/coach/init/optimize) cannot read the held-out test set"
 type = "forbidden"
-source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach", "sqbyl.init"]
+source_modules = ["sqbyl.synth", "sqbyl.console", "sqbyl.coach", "sqbyl.init", "sqbyl.optimize"]
 forbidden_modules = ["sqbyl.eval.heldout"]
 ignore_imports = ["sqbyl.project -> sqbyl.eval.runner"]
 
-# TODO (Phase 8): add `sqbyl.optimize` to `source_modules` above when that module lands —
-# same rule, same reasoning. (Can't list it now: import-linter errors on nonexistent
-# modules.) The Coach was promoted into this contract in Phase 5.3.
+# `sqbyl.optimize` is held to the same rule (Phase 8.3): its coach→apply→eval loop only ever
+# evaluates dev, and it scores the held-out set exactly once — on the picked version, through
+# the sanctioned `Project.eval` door (the ignored `project -> eval.runner` edge), never by
+# importing `heldout` directly. The Coach was promoted into this contract in Phase 5.3.

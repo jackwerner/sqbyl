@@ -55,6 +55,7 @@ class Project:
         replay: str | Path | None = None,
         record: str | Path | None = None,
         as_of: datetime | None = None,
+        judge: bool | None = None,
         persist: bool = True,
     ) -> ScoredRun:
         """Run the eval harness over a benchmark ``split`` → :class:`ScoredRun` (spec §10).
@@ -62,6 +63,10 @@ class Project:
         The substrate for ``sqbyl eval``: builds the LLM client (unless one is injected,
         e.g. a mock/replay client in tests), runs every question, **meters each paid call**
         to ``.sqbyl/usage.db`` (invariant 5), and persists the run to ``.sqbyl/runs/``.
+
+        ``judge`` forces Layer-2 judging on/off (default follows ``automation.auto_judge``);
+        the optimizer passes ``judge=False`` so its many trial evals stay cheap and
+        deterministic (the judge is advisory and never moves the headline it optimizes).
         """
         from sqbyl.eval.report import save_run
         from sqbyl.eval.runner import run_eval
@@ -77,6 +82,7 @@ class Project:
             split=split,
             llm=client,
             as_of=as_of,
+            judge=judge,
             trace_writer=TraceWriter(paths.traces_dir / "eval.jsonl"),
         )
         with UsageStore(paths.usage_db) as store:

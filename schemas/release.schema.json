@@ -410,13 +410,54 @@
     },
     "Scorecard": {
       "additionalProperties": false,
-      "description": "The eval result that justified promoting a version (spec \u00a711).\n\nThe headline ``accuracy`` is always the **held-out test** number; ``dev_*`` is\nshown beside it so a reviewer can see the overfitting gap.",
+      "description": "The eval result that justified promoting a version (spec \u00a711).\n\nThe headline ``accuracy`` is always the **held-out test** number; ``dev_*`` is\nshown beside it so a reviewer can see the overfitting gap. The point estimate is\ncarried **with its Wilson interval** (``accuracy_low``/``accuracy_high``) and its\nunresolved count (``n_manual_review``), because on the tens-of-questions sets sqbyl\ntargets a bare percentage over-states how settled the number is, and a miss that is\n\"unresolved\" is not the same as one that is \"wrong\". Provenance (``as_of``, the judge\ncalibration fingerprint, and the brain's ``knowledge_fingerprint``) is stamped so the\nnumber is reproducible from its inputs, not just asserted.",
       "properties": {
         "accuracy": {
           "maximum": 1.0,
           "minimum": 0.0,
           "title": "Accuracy",
           "type": "number"
+        },
+        "accuracy_high": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accuracy High"
+        },
+        "accuracy_low": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Accuracy Low"
+        },
+        "as_of": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "As Of"
         },
         "benchmark": {
           "description": "Which set produced the headline number, e.g. 'test'.",
@@ -475,6 +516,18 @@
           "title": "Human Reviewed",
           "type": "boolean"
         },
+        "judge_calibration": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Judge Calibration"
+        },
         "judge_human_agreement": {
           "anyOf": [
             {
@@ -488,6 +541,31 @@
           ],
           "default": null,
           "title": "Judge Human Agreement"
+        },
+        "judge_human_agreement_n": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Judge Human Agreement N"
+        },
+        "knowledge_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Knowledge Fingerprint"
         },
         "latency_p50_ms": {
           "anyOf": [
@@ -506,6 +584,12 @@
           "description": "Number of questions in the headline set.",
           "minimum": 0,
           "title": "N",
+          "type": "integer"
+        },
+        "n_manual_review": {
+          "default": 0,
+          "minimum": 0,
+          "title": "N Manual Review",
           "type": "integer"
         }
       },
