@@ -4,30 +4,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is **pre-code**. It currently contains only design/planning documents — no Python package exists yet. The authoritative references are:
+This repo is **fully built**: the implementation plan (`sqbyl-implementation-plan.md`, Phases 0–9) is complete, followed by post-implementation enhancements (packaging, CI/supply-chain, enterprise-readiness). It is not yet published to PyPI. Authoritative references:
 
-- `sqbyl-design-spec.md` — the full product design (read this for *what* and *why*).
-- `sqbyl-implementation-plan.md` — the phased, dependency-ordered build sequence (read this for *what to build next*). Section references below (e.g. §4) point into the design spec.
+- `sqbyl-design-spec.md` — the full product design (*what* and *why*). Section references below (e.g. §4) point here.
+- `sqbyl-implementation-plan.md` — the phased build sequence; now a record of *how it was built* (all phases complete), not a to-do list.
 - `sqbyl-user-journey.md` — a narrated end-to-end run, useful for CLI/UX intent.
+- `sqbyl-enhancements.md` — the post-implementation backlog: forward-looking work and its status.
 - `README.md` — the user-facing entry point.
 
-When implementing, follow the phase order in the implementation plan. Each phase is dependency-ordered so it only relies on earlier phases. **Phase 0 (foundations) must come before any feature work** — it's what makes everything testable without spending API tokens.
+New work should respect the invariants below (CI enforces the structural ones) and land on the correct side of the two-package boundary. Match the surrounding code's conventions.
 
 ## What sqbyl is
 
 An open-source, Claude-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over a user's own SQL database. One Anthropic API key powers everything: the SQL-writing agent, the LLM judges that score it, and the **Coach** that reads eval failures and proposes applyable file diffs. A project is a git-native directory of plain YAML/Markdown; a release is a single portable JSON. The differentiator is the closed improvement loop (build → eval → coach → re-eval), all transparent and editable.
 
-## Intended toolchain (Phase 0.1)
-
-Not yet wired up. When scaffolding, use:
+## Toolchain
 
 - **`uv`** for env + dependency management. `uv sync` to install, `uv run <cmd>` to execute.
-- **`ruff`** for lint + format: `uv run ruff check .` and `uv run ruff format .`
+- **`ruff`** for lint + format: `uv run ruff check .` and `uv run ruff format --check .`
 - **`pytest`**: `uv run pytest`. Single test: `uv run pytest path/to/test_x.py::test_name`.
-- **`mypy`/pyright** in strict mode for type-checking.
+- **`mypy`** in strict mode: `uv run mypy`.
+- **import-linter**: `uv run lint-imports` (enforces the package + dev/test boundaries — invariants 1 and 3).
 - **pydantic v2** as the schema backbone (see invariants).
 
-CI runs lint → type-check → test, **plus an import-direction check** (see invariant 1) and **must never spend API tokens** (see invariant 4).
+The local gate to run before every PR: `ruff check` → `ruff format --check` → `mypy` → `lint-imports` → `pytest`. CI runs that plus a dependency vulnerability audit (`pip-audit`), a license-compat check, and a live-Postgres job — and **must never spend API tokens** (invariant 4).
 
 ## Architecture: two packages, one dependency arrow
 
@@ -74,10 +74,10 @@ When a design decision is ambiguous, prefer the option that better satisfies the
 - **Route attention.** Confidence on every machine decision; auto-apply high-confidence (with one-click undo); surface only the ambiguous/business-meaning items, sorted by leverage.
 - **Small-space posture.** Default toward ≤5–7 tables; warn beyond that. "Include everything" in the context compiler is fine until ~30 tables (large-schema LLM/lexical selection is a late phase — don't build it early).
 
-## Testing assets (Phase 0.4)
+## Testing assets
 
-A checked-in **DuckDB fixture** (the `orders`/`customers` schema from spec §4) plus a complete dogfood sqbyl project ship as both the README example and the end-to-end CI smoke test. New features should be exercisable against this fixture under record-replay with zero external dependencies.
+A checked-in **DuckDB fixture** (the `orders`/`customers` schema from spec §4) plus a complete dogfood sqbyl project serve as both the README example and the end-to-end CI smoke test. New features should be exercisable against this fixture under record-replay with zero external dependencies. Postgres also has a live-server CI job (`tests/test_postgres_integration.py`), skipped locally unless `SQBYL_TEST_POSTGRES_URL` is set.
 
 ## First-class dialects
 
-DuckDB + Postgres are the M0 dialects, behind a thin dialect seam. Snowflake/BigQuery/MySQL come last (Phase 9). Don't couple core logic to a single dialect's quirks.
+DuckDB + Postgres are the first-class dialects, behind a thin dialect seam; SQLite, MySQL, Snowflake, and BigQuery are also supported behind it (added last). Don't couple core logic to a single dialect's quirks.
