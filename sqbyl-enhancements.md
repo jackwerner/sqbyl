@@ -23,8 +23,9 @@ Newest first. Items marked ✅ below are done; ◐ = partially landed.
 - ✅ **§5.8 OSS governance** — SECURITY / CONTRIBUTING / CODE_OF_CONDUCT / PR template + a CI license-compat gate ([PR #19](https://github.com/jackwerner/sqbyl/pull/19)).
 - ✅ **§5.2 serve hardening** — reviewed: already satisfied (loopback default + non-local warning + test). Deliberately *no* `--auth` — dev models shouldn't be served publicly; production is runtime-embedding. No change needed.
 - ✅ **§5.4 live-Postgres CI** — service-container job + integration tests; **found & fixed a real read-only-enforcement bug** in the Postgres adapter (uncommitted session `SET`). Verified against live PG.
+- ✅ **§4.1 `sqbyl reset`** — clear local `.sqbyl/` state (keeps cost history + judge calibration unless `--all`).
 
-**Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); `sqbyl reset` (§4.1); README enterprise overhaul (§1.2); Bedrock/Vertex + `base_url` provider support (§2.2).
+**Next up (candidates):** the public flip + PyPI reservation/Trusted-Publisher setup + `v0.1.0` tag (your call / needs your accounts); README enterprise overhaul (§1.2 — I'll bring a proposal); Bedrock/Vertex + `base_url` provider support (§2.2); §5.1 polish (bandit/SBOM/SHA-pin).
 
 ---
 
@@ -118,7 +119,8 @@ Both packages sit at `version = "0.0.0"` and the README says "not yet published.
 
 ## 4. Multi-project & lifecycle UX
 
-### 4.1 Start over / clear if the user doesn't like it — **S–M, P1**
+### 4.1 Start over / clear if the user doesn't like it — **S–M, P1** — ✅ done (`sqbyl reset`)
+> **Status:** `sqbyl reset [DIR] [--all] [--yes]` shipped. Default clears derived `.sqbyl/` scratch (runs, traces, coach proposals, caches, candidates, feedback) but **preserves the two audit trails** — `usage.db` (cost history) and `calibration.jsonl` (human judge review) — so a reset can't silently erase the cost record or reviewed data. `--all` wipes the whole `.sqbyl/`. Confirmation required unless `--yes`. Authored files (`sqbyl.yaml`, `semantics/`, `benchmarks/`) are deliberately **not** touched — git reverts those (coach edits are git-tracked, so `git revert` already undoes an apply). The `--hard` project-file reset the original note floated is intentionally *not* built: deleting human-authored semantics via a flag is riskier than `git`.
 Today "starting over" means manually deleting files. Two levels:
 - **Reset generated state, keep the project:** everything paid/derived lives under `.sqbyl/` (runs, traces, usage, caches — gitignored). A `sqbyl reset` (or `clean`) that wipes `.sqbyl/` gives a clean slate without losing the semantics/benchmarks you authored. Add a `--hard` that also clears generated `semantics/`, `benchmarks/dev.yaml`, etc. back to a bare `init`, with a confirm prompt (it deletes human-reviewed work).
 - **Undo the last coach apply:** coach edits are git-tracked, so `git revert` already works — but document it, and consider a `sqbyl coach undo` that reverses the most recent applied diff set (we know exactly which files each `apply N` touched).
