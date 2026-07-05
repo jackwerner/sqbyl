@@ -1,4 +1,4 @@
-# Automated dependency updates (sqbyl-enhancements.md §5.1).
+# Automated dependency updates.
 #
 # Bumps arrive as reviewable PRs and run the full CI gate (lint → type → test →
 # import-linter → pip-audit) before they can merge, so an update can't land

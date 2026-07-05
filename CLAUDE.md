@@ -4,12 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is **fully built**: the implementation plan (`sqbyl-implementation-plan.md`, Phases 0–9) is complete, followed by post-implementation enhancements (packaging, CI/supply-chain, enterprise-readiness). It is not yet published to PyPI. Authoritative references:
+This repo is **fully built**: the implementation plan (`docs/sqbyl-implementation-plan.md`, Phases 0–9) is complete, followed by post-implementation enhancements (packaging, CI/supply-chain, enterprise-readiness). It is not yet published to PyPI. Authoritative references:
 
-- `sqbyl-design-spec.md` — the full product design (*what* and *why*). Section references below (e.g. §4) point here.
-- `sqbyl-implementation-plan.md` — the phased build sequence; now a record of *how it was built* (all phases complete), not a to-do list.
-- `sqbyl-user-journey.md` — a narrated end-to-end run, useful for CLI/UX intent.
-- `sqbyl-enhancements.md` — the post-implementation backlog: forward-looking work and its status.
+- `docs/sqbyl-design-spec.md` — the full product design (*what* and *why*). Section references below (e.g. §4) point here.
+- `docs/sqbyl-implementation-plan.md` — the phased build sequence; now a record of *how it was built* (all phases complete), not a to-do list.
+- `docs/sqbyl-user-journey.md` — a narrated end-to-end run, useful for CLI/UX intent.
 - `README.md` — the user-facing entry point.
 
 New work should respect the invariants below (CI enforces the structural ones) and land on the correct side of the two-package boundary. Match the surrounding code's conventions.

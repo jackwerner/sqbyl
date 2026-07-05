@@ -1,4 +1,4 @@
-"""Live-Postgres integration for the read-only DB layer (sqbyl-enhancements.md §5.4).
+"""Live-Postgres integration for the read-only DB layer.
 
 The seeded DuckDB fixture exercises the *logic*, but the Postgres adapter's session
 read-only enforcement and privilege introspection only really run against a live server.

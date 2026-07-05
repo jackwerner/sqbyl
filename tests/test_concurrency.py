@@ -1,4 +1,4 @@
-"""The shipped runtime under concurrent load (sqbyl-enhancements.md §2.3).
+"""The shipped runtime under concurrent load.
 
 A typical enterprise API serves ``ask()`` from a threadpool (e.g. FastAPI running a
 sync endpoint, or ``run_in_threadpool``), so one loaded ``Agent`` must be safe to call

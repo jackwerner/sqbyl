@@ -4,7 +4,7 @@
 
 Bring your own database. Bring one Anthropic API key. sqbyl uses Claude to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
 
-> **Status: pre-release / not yet on PyPI.** The full toolkit (Phases 0–9) is built and tested; install is from source for now, and command/file shapes may still change before a first tagged release. See [Project status](#project-status) for the capability map. The design is fully specified in [`sqbyl-design-spec.md`](sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md).
+> **Status: pre-release / not yet on PyPI.** The full toolkit (Phases 0–9) is built and tested; install is from source for now, and command/file shapes may still change before a first tagged release. See [Project status](#project-status) for the capability map. The design is fully specified in [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
 
 ---
 
@@ -125,7 +125,7 @@ sqbyl release create --tag v1
 
 `release create` emits one portable JSON — the agent's "brain" (semantics, instructions, examples, judge prompts, scorecard). The model, key, and database are **not** baked in; they're injected wherever it runs.
 
-For the full narrative, read [`sqbyl-user-journey.md`](sqbyl-user-journey.md).
+For the full narrative, read [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md).
 
 ---
 
@@ -185,7 +185,7 @@ my-project/
 └── .sqbyl/             # runs, traces, usage, caches (gitignored)
 ```
 
-The dev/test split is load-bearing: optimizing and measuring on the same set is training on the test set, so the headline accuracy is always the held-out number. Full format reference in [the design spec, §4](sqbyl-design-spec.md).
+The dev/test split is load-bearing: optimizing and measuring on the same set is training on the test set, so the headline accuracy is always the held-out number. Full format reference in [the design spec, §4](docs/sqbyl-design-spec.md).
 
 ---
 
@@ -205,7 +205,7 @@ sqbyl cost <command>      # estimate $ / tokens, spend nothing
 sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)
 ```
 
-Per-step à-la-carte commands (`introspect`, `profile`, `annotate`, `judge`, `runs`, `serve`, `run`) are documented in [the spec, §10](sqbyl-design-spec.md).
+Per-step à-la-carte commands (`introspect`, `profile`, `annotate`, `judge`, `runs`, `serve`, `run`) are documented in [the spec, §10](docs/sqbyl-design-spec.md).
 
 ---
 
@@ -225,7 +225,7 @@ model:
   # base_url: env:CLAUDE_GATEWAY   # optional: route Claude through a proxy / AI gateway
 ```
 
-See [§4 of the spec](sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles. To route through a corporate proxy or AI gateway, set `model.base_url` (or pass `base_url=` to the runtime `load()`) — no other change needed.
+See [§4 of the spec](docs/sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles. To route through a corporate proxy or AI gateway, set `model.base_url` (or pass `base_url=` to the runtime `load()`) — no other change needed.
 
 ---
 
@@ -240,7 +240,7 @@ The section a security reviewer will look for:
 - **CI never spends tokens.** Every LLM path runs against a mock / record-replay seam, so continuous integration never calls the API. Dependencies are vulnerability-scanned (`pip-audit`), license-checked, and updated via Dependabot.
 - **Production hardening is yours.** You embed the runtime in your own service, inheriting its auth, TLS, pooling, and rate limiting. `sqbyl serve` is a localhost dev convenience, not a production server — don't expose it.
 
-Governance, RBAC, lineage, and catalog management are deliberately **not** reimplemented — that's your database's job ([non-goals](sqbyl-design-spec.md#non-goals)).
+Governance, RBAC, lineage, and catalog management are deliberately **not** reimplemented — that's your database's job ([non-goals](docs/sqbyl-design-spec.md#non-goals)).
 
 ---
 
@@ -254,7 +254,7 @@ Governance, RBAC, lineage, and catalog management are deliberately **not** reimp
 
 ## Project status
 
-The full build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) (Phases 0–9) is complete: every capability below is built, tested, and merged.
+The full build sequence in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md) (Phases 0–9) is complete: every capability below is built, tested, and merged.
 
 | Capability | State |
 |---|---|
@@ -265,7 +265,7 @@ The full build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation
 | Release + runtime + optimizer | ✅ built |
 | More dialects, serve, exports, importers | ✅ built |
 
-**Not yet released to PyPI**, so commands and file shapes may still change before a first tagged version — see [`sqbyl-enhancements.md`](sqbyl-enhancements.md) for the post-implementation backlog (packaging, docs, enterprise-readiness).
+**Not yet released to PyPI**, so commands and file shapes may still change before a first tagged version.
 
 ---
 
@@ -273,10 +273,9 @@ The full build sequence in [`sqbyl-implementation-plan.md`](sqbyl-implementation
 
 The spec is the *why*, the journey is a *narrated first run*, and the plan is a record of *how it was built*:
 
-- [`sqbyl-design-spec.md`](sqbyl-design-spec.md) — the full product design specification.
-- [`sqbyl-user-journey.md`](sqbyl-user-journey.md) — a narrated first run, start to ship.
-- [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md) — the phased build sequence (Phases 0–9, complete).
-- [`sqbyl-enhancements.md`](sqbyl-enhancements.md) — the post-implementation backlog (packaging, docs, enterprise-readiness).
+- [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md) — the full product design specification.
+- [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) — a narrated first run, start to ship.
+- [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md) — the phased build sequence (Phases 0–9, complete).
 
 ## License
 

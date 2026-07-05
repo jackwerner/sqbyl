@@ -39,3 +39,6 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
+
+# Private planning doc — kept local, not published
+sqbyl-enhancements.md
