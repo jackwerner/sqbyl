@@ -19,7 +19,7 @@ classifiers = [
 ]
 dependencies = [
     # Lockstep: the toolkit and runtime are cut together, so pin the exact runtime
-    # this toolkit was built and tested against (sqbyl-enhancements.md §3.1).
+    # this toolkit was built and tested against.
     "sqbyl-runtime==0.1.0",
     "pydantic>=2.7,<3",
     "pyyaml>=6",

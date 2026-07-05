@@ -56,7 +56,7 @@ jobs:
         run: uv run pytest
 
   security:
-    # Audit the locked dependency tree for known vulnerabilities (sqbyl-enhancements.md §5.1).
+    # Audit the locked dependency tree for known vulnerabilities.
     # Runs alongside `quality`, never spends API tokens (invariant 4).
     runs-on: ubuntu-latest
     steps:
@@ -80,8 +80,8 @@ jobs:
           uvx pip-audit -r requirements-audit.txt --progress-spinner off
 
   postgres:
-    # Verify the first-class Postgres dialect against a REAL server (sqbyl-enhancements.md
-    # §5.4): session read-only enforcement, privilege introspection, and schema introspect.
+    # Verify the first-class Postgres dialect against a REAL server: session read-only
+    # enforcement, privilege introspection, and schema introspect.
     # $0 — these tests touch only the DB safety layer, no LLM (invariant 4).
     runs-on: ubuntu-latest
     services:

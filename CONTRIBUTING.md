@@ -61,9 +61,8 @@ reviewers watch the rest.
 7. **OTel GenAI semantic conventions** for every trace, local-first under `.sqbyl/` but
    exportable.
 
-The design rationale lives in [`sqbyl-design-spec.md`](sqbyl-design-spec.md); the build
-history is [`sqbyl-implementation-plan.md`](sqbyl-implementation-plan.md); forward work is
-[`sqbyl-enhancements.md`](sqbyl-enhancements.md).
+The design rationale lives in [`docs/sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), and
+the build history in [`docs/sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
 
 ## Pull requests
 

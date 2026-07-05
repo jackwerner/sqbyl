@@ -1,5 +1,5 @@
 # Build both packages and publish to PyPI via Trusted Publishing (OIDC — no long-lived
-# tokens) when a `v*` tag is pushed (sqbyl-enhancements.md §3.1).
+# tokens) when a `v*` tag is pushed.
 #
 # ONE-TIME PyPI SETUP before the first run: register a PyPI Trusted Publisher for EACH
 # package (`sqbyl` and `sqbyl-runtime`) pointing at this repository, workflow

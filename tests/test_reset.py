@@ -1,4 +1,4 @@
-"""`sqbyl reset` — clear local `.sqbyl/` state for a clean slate (sqbyl-enhancements.md §4.1).
+"""`sqbyl reset` — clear local `.sqbyl/` state for a clean slate.
 
 Default clears derived scratch but keeps the two audit trails (cost history + judge
 calibration); `--all` wipes everything; confirmation is required unless `--yes`.
