@@ -45,8 +45,11 @@ langchain = ["langchain-core>=0.3"]
 
 [project.urls]
 Homepage = "https://github.com/jackwerner/sqbyl"
+Documentation = "https://jackwerner.github.io/sqbyl/"
 Repository = "https://github.com/jackwerner/sqbyl"
 Issues = "https://github.com/jackwerner/sqbyl/issues"
+Changelog = "https://github.com/jackwerner/sqbyl/blob/main/CHANGELOG.md"
+Discussions = "https://github.com/jackwerner/sqbyl/discussions"
 
 [build-system]
 requires = ["hatchling"]
