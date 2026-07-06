@@ -23,6 +23,9 @@ from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, RateLimit
 # Name of the synthetic tool used to coerce strict-JSON structured output.
 _STRUCTURED_TOOL = "emit_result"
 
+# Param the compatibility shim knows how to drop when a model rejects it.
+_TEMPERATURE = "temperature"
+
 
 class AnthropicLLMClient(LLMClient):
     def __init__(
@@ -104,13 +107,44 @@ class AnthropicLLMClient(LLMClient):
             ]
             kwargs["tool_choice"] = {"type": "tool", "name": _STRUCTURED_TOOL}
 
-        try:
-            message = client.messages.create(**kwargs)
-        except Exception as exc:  # translate the provider's 429 into the seam's signal
-            if is_rate_limit(exc):
-                raise RateLimitError(str(exc), retry_after=retry_after(exc)) from exc
-            raise
+        message = self._create_with_compat(client, kwargs)
         return _to_response(message, structured=structured)
+
+    def _create_with_compat(self, client: Any, kwargs: dict[str, Any]) -> Any:
+        """Call the messages API, retrying with an offending param stripped if the model rejects it.
+
+        Newer Claude models (e.g. ``claude-opus-4-8``) deprecate a custom ``temperature`` and
+        return a 400 naming it. Rather than hardcode a per-model table, we try, and on such a
+        "this parameter isn't supported" 400 we drop the param and retry — bounded, so a
+        genuinely broken request still surfaces. (Mirrors the OpenAI client's shim.)
+        """
+        attempt = dict(kwargs)
+        for _ in range(2):
+            try:
+                return client.messages.create(**attempt)
+            except Exception as exc:  # noqa: BLE001 - re-raised below unless we can adapt
+                if is_rate_limit(exc):
+                    raise RateLimitError(str(exc), retry_after=retry_after(exc)) from exc
+                adjusted = _adjust_for_unsupported_param(exc, attempt)
+                if adjusted is None:
+                    raise
+                attempt = adjusted
+        # Exhausted adjustments — one final attempt so any error propagates verbatim.
+        return client.messages.create(**attempt)
+
+
+def _adjust_for_unsupported_param(exc: Exception, kwargs: dict[str, Any]) -> dict[str, Any] | None:
+    """Return a copy of ``kwargs`` with one unsupported param dropped, or ``None`` if we can't help.
+
+    Matched on the error message: newer Claude models report ``temperature`` as deprecated in
+    the 400 body (``` `temperature` is deprecated for this model ```).
+    """
+    message = str(exc).lower()
+    if _TEMPERATURE in message and _TEMPERATURE in kwargs:
+        adjusted = dict(kwargs)
+        adjusted.pop(_TEMPERATURE)
+        return adjusted
+    return None
 
 
 def _to_response(message: Any, *, structured: bool) -> LLMResponse:
