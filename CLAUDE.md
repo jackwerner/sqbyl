@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is **fully built**: the implementation plan (`docs/sqbyl-implementation-plan.md`, Phases 0–9) is complete, followed by post-implementation enhancements (packaging, CI/supply-chain, enterprise-readiness). It is not yet published to PyPI. Authoritative references:
+This repo is **fully built and public**: the implementation plan (`docs/sqbyl-implementation-plan.md`, Phases 0–9) is complete, followed by post-implementation enhancements (packaging, CI/supply-chain, enterprise-readiness) and published to PyPI. Authoritative references:
 
 - `docs/sqbyl-design-spec.md` — the full product design (*what* and *why*). Section references below (e.g. §4) point here.
 - `docs/sqbyl-implementation-plan.md` — the phased build sequence; now a record of *how it was built* (all phases complete), not a to-do list.
