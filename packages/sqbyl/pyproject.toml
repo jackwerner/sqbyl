@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Jack Werner" }]
-keywords = ["text-to-sql", "sql", "llm", "claude", "anthropic", "agent", "evaluation"]
+keywords = ["text-to-sql", "sql", "llm", "claude", "anthropic", "openai", "agent", "evaluation", "mcp"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -40,8 +40,11 @@ sqbyl = "sqbyl.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/jackwerner/sqbyl"
+Documentation = "https://jackwerner.github.io/sqbyl/"
 Repository = "https://github.com/jackwerner/sqbyl"
 Issues = "https://github.com/jackwerner/sqbyl/issues"
+Changelog = "https://github.com/jackwerner/sqbyl/blob/main/CHANGELOG.md"
+Discussions = "https://github.com/jackwerner/sqbyl/discussions"
 
 [build-system]
 requires = ["hatchling"]
