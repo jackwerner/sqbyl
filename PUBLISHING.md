@@ -37,17 +37,23 @@ one per package. For each, fill in exactly:
 | Owner | `jackwerner` | `jackwerner` |
 | Repository name | `sqbyl` | `sqbyl` |
 | Workflow name | `release.yml` | `release.yml` |
-| Environment name | `pypi` | `pypi` |
+| Environment name | `pypi-runtime` | `pypi` |
 
-> The **Environment name** must be `pypi` — it matches the `environment: pypi` in
-> `release.yml`. Getting any of these fields wrong is the #1 cause of a failed publish
-> (you'll see a "not a trusted publisher" error); double-check them.
+> **The two environment names differ on purpose.** PyPI keys a pending publisher on
+> (owner, repo, workflow, environment) and refuses to let two different project names
+> claim the *same* tuple — register them identically and the second one fails with
+> *"a pending trusted publisher matching this configuration has already been registered
+> for a different project name."* Distinct environments (`pypi-runtime` vs `pypi`) make
+> the tuples unique. Each must match the corresponding `environment:` block in
+> `release.yml`. Getting any field wrong is the #1 cause of a failed publish (you'll see
+> a "not a trusted publisher" error); double-check them.
 
-### 3. Create the `pypi` GitHub environment
+### 3. Create the two GitHub environments
 
-- GitHub → repo **Settings** → **Environments** → **New environment** → name it `pypi`.
-- You can optionally add yourself as a **required reviewer**, which makes every publish
-  pause for your one-click approval. Recommended for a first release.
+- GitHub → repo **Settings** → **Environments** → **New environment** → create **both**
+  `pypi` and `pypi-runtime` (names must match the `environment:` blocks in `release.yml`).
+- You can optionally add yourself as a **required reviewer** on each, which makes every
+  publish pause for your one-click approval. Recommended for a first release.
 
 That's it for setup. You never touch PyPI credentials again.
 
@@ -122,7 +128,12 @@ backwards-compatible features. While pre-`1.0`, breaking changes bump the minor.
 
 - **"not a trusted publisher" / OIDC error** — a field in the pending publisher doesn't
   match. Re-check owner/repo/workflow/environment against the table in step 2. The
-  workflow filename must be exactly `release.yml`, the environment exactly `pypi`.
+  workflow filename must be exactly `release.yml`; the environment must be `pypi-runtime`
+  for the runtime and `pypi` for the toolkit.
+- **"a pending trusted publisher matching this configuration has already been registered
+  for a different project name"** — you registered both packages with the *same*
+  environment name. PyPI won't allow that (see the note in step 2). Delete the runtime's
+  pending publisher and re-add it with environment `pypi-runtime`.
 - **"File already exists"** — you're trying to publish a version that's already on PyPI.
   Bump the version and tag again; you can't overwrite.
 - **Only one package published** — the two publish jobs are independent; check that

@@ -1367,6 +1367,7 @@ def _run(args: list[str]) -> int:
     mcp = "--mcp" in args
     db = _opt(args, "db")
     model = _opt(args, "model")
+    provider = _opt(args, "provider") or "anthropic"
     root = _opt(args, "root") or "."
     host = _opt(args, "host") or "127.0.0.1"
     port = int(_opt(args, "port") or "8765")
@@ -1375,11 +1376,14 @@ def _run(args: list[str]) -> int:
     if budget_parse is None:
         return 2
     budget, _auto, _dry = budget_parse
-    known = {db, model, root, host, str(port), str(row_cap)}
+    known = {db, model, provider, root, host, str(port), str(row_cap)}
     known |= {str(budget)} if budget is not None else set()
     rel = [p for p in positional if p not in known]
     if not rel or db is None or model is None:
-        print("usage: sqbyl run <release.json> --db URL --model MODEL [--mcp] [--budget $X]")
+        print(
+            "usage: sqbyl run <release.json> --db URL --model MODEL "
+            "[--provider anthropic|openai] [--mcp] [--budget $X]"
+        )
         return 2
     if mcp:
         # An MCP server is an autonomous, human-out-of-the-loop paid consumer (a downstream
@@ -1391,14 +1395,29 @@ def _run(args: list[str]) -> int:
                 "human in the loop, so it must have a hard cap to stop at"
             )
             return 2
-        return _run_mcp(rel[0], db=db, model=model, root=root, budget=budget, row_cap=row_cap)
-    endpoint = release_endpoint(rel[0], db=db, model=model, project_root=root)
+        return _run_mcp(
+            rel[0],
+            db=db,
+            model=model,
+            provider=provider,
+            root=root,
+            budget=budget,
+            row_cap=row_cap,
+        )
+    endpoint = release_endpoint(rel[0], db=db, model=model, provider=provider, project_root=root)
     chat = ChatServer(endpoint, paths=SqbylPaths(Path(root)), budget=budget)
     return _serve_forever(chat, host=host, port=port, budget=budget)
 
 
 def _run_mcp(
-    release: str, *, db: str, model: str, root: str, budget: float | None, row_cap: int = 100
+    release: str,
+    *,
+    db: str,
+    model: str,
+    provider: str = "anthropic",
+    root: str,
+    budget: float | None,
+    row_cap: int = 100,
 ) -> int:
     """Serve a release as an MCP tool over stdio, metering each tool call to usage.db.
 
@@ -1418,7 +1437,11 @@ def _run_mcp(
 
     paths = SqbylPaths(Path(root)).ensure()
     agent = load(
-        release, db=db, model=model, trace_writer=TraceWriter(paths.traces_dir / "mcp.jsonl")
+        release,
+        db=db,
+        model=model,
+        provider=provider,
+        trace_writer=TraceWriter(paths.traces_dir / "mcp.jsonl"),
     )
     meter = SpendMeter(budget=budget, store=None, command="run")
     est = price_usage_estimate(model)

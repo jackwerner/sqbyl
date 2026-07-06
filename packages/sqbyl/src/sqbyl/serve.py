@@ -288,6 +288,7 @@ def release_endpoint(
     *,
     db: str,
     model: str,
+    provider: str = "anthropic",
     project_root: str | Path,
     llm: object | None = None,
 ) -> Endpoint:
@@ -305,6 +306,7 @@ def release_endpoint(
         release_path,
         db=db,
         model=model,
+        provider=provider,
         llm=llm if isinstance(llm, LLMClient) else None,
         trace_writer=TraceWriter(paths.traces_dir / "run.jsonl"),
     )

@@ -61,7 +61,11 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment:
-      name: pypi
+      # Distinct from the `sqbyl` job's environment on purpose: PyPI keys a pending
+      # Trusted Publisher on (owner, repo, workflow, environment) and won't let two
+      # different project names share the same tuple. Separate environments also give
+      # each package its own reviewer/protection rules.
+      name: pypi-runtime
       url: https://pypi.org/project/sqbyl-runtime/
     permissions:
       id-token: write # OIDC token for Trusted Publishing

@@ -27,8 +27,8 @@ from pathlib import Path
 from sqbyl_runtime.context import ProjectKnowledge
 from sqbyl_runtime.db import Database
 from sqbyl_runtime.fingerprint import drifted_tables, live_schema_fingerprint
-from sqbyl_runtime.llm.anthropic_client import AnthropicLLMClient
 from sqbyl_runtime.llm.base import LLMClient
+from sqbyl_runtime.llm.factory import build_provider_client
 from sqbyl_runtime.models import ReleaseArtifact
 from sqbyl_runtime.pipeline import AgentResult, ask
 from sqbyl_runtime.state.traces import TraceWriter
@@ -95,6 +95,7 @@ def load(
     *,
     db: str | Database,
     model: str,
+    provider: str = "anthropic",
     api_key: str | None = None,
     base_url: str | None = None,
     llm: LLMClient | None = None,
@@ -107,11 +108,12 @@ def load(
 
     ``release`` is a path to a release JSON or an already-parsed :class:`ReleaseArtifact`.
     ``db`` is a connection URL (``env:`` indirection and bare DuckDB paths both work) or an
-    already-open :class:`Database`. ``model`` is the agent model to run under — swap Claude
-    for anything the :class:`LLMClient` seam supports by passing your own ``llm``; otherwise
-    the real Anthropic client is built from ``api_key`` (or ``$ANTHROPIC_API_KEY``). Pass
-    ``base_url`` to route that client through an alternate Claude endpoint — a corporate
-    proxy or an AI gateway — without any other change.
+    already-open :class:`Database`. ``model`` is the model to run under and ``provider`` picks
+    the backend (``"anthropic"`` or ``"openai"``) — the real client is built from ``api_key``
+    (or the provider's env var, ``$ANTHROPIC_API_KEY`` / ``$OPENAI_API_KEY``). Pass your own
+    ``llm`` to use any other :class:`LLMClient`, or ``base_url`` to route the built client
+    through an alternate endpoint — a corporate proxy or an AI gateway — without any other
+    change.
 
     Emits non-fatal :class:`SchemaMismatchWarning` / :class:`ModelMismatchWarning` when the
     injected DB or model has drifted from what the release was built and blessed on. Pass
@@ -135,7 +137,11 @@ def load(
         _warn_model_mismatch(artifact, model)
         _warn_schema_mismatch(artifact, database)
 
-    client = llm if llm is not None else AnthropicLLMClient(api_key=api_key, base_url=base_url)
+    client = (
+        llm
+        if llm is not None
+        else build_provider_client(provider, api_key=api_key, base_url=base_url)
+    )
     return Agent(
         knowledge=knowledge,
         db=database,

@@ -2,7 +2,7 @@
 
 **An open-source, Claude-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.**
 
-Bring your own database. Bring one Anthropic API key. sqbyl uses Claude to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
+Bring your own database and one LLM provider key (Anthropic or OpenAI). sqbyl uses your chosen model to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
 
 > **Status: pre-release / not yet on PyPI.** The full toolkit (Phases 0–9) is built and tested; install is from source for now, and command/file shapes may still change before a first tagged release. See [Project status](#project-status) for the capability map. The design is fully specified in [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
 
@@ -15,7 +15,7 @@ If you want a trustworthy natural-language-to-SQL surface over a plain Postgres/
 sqbyl is the middle path. It reproduces the **build → evaluate → get told how to improve → re-evaluate** loop as plain files in a git repo — and it's built so the accuracy number that loop produces is one you can actually **report to stakeholders and defend**:
 
 - **No black box.** Every prompt, judge, and improvement proposal is readable, editable plain text/JSON.
-- **No second vendor.** One Anthropic key powers the agent, the judges, and the Coach. Context selection is LLM/lexical, so there's no embeddings provider or vector store to run.
+- **No second vendor.** A single provider key (Anthropic or OpenAI) powers the agent, the judges, and the Coach. Context selection is LLM/lexical, so there's no embeddings provider or vector store to run.
 - **No surprise bill.** The free, deterministic work (connect, profile, infer joins) runs first at $0. Paid work is estimated up front, metered live, and capped by `--budget`.
 - **Versioned like code.** Your whole "agent" is a directory of YAML you diff, review, and `git revert`.
 - **Defensible by design.** The headline accuracy is deterministic and measured on a *held-out* set the improvement loop can never touch — so "we hit 94%" is a claim that survives scrutiny, not a benchmark you overfit. ([more below](#built-for-defensible-ml-systems))
@@ -74,9 +74,14 @@ uv sync                      # sqbyl uses uv for env + dependency management
 Once published, the intended install will be:
 
 ```bash
-pip install sqbyl           # full dev toolkit
-pip install sqbyl-runtime   # the lightweight "ship it" runtime only
+pip install 'sqbyl[anthropic]'          # full dev toolkit, Claude backend
+pip install 'sqbyl[openai]'             # full dev toolkit, OpenAI backend
+pip install 'sqbyl-runtime[anthropic]'  # the lightweight "ship it" runtime only
 ```
+
+The provider SDKs are optional extras — sqbyl is provider-neutral, so pick the one you'll use
+(`[anthropic]` or `[openai]`) and install just that. A bare `pip install sqbyl` installs the
+toolkit without a provider SDK.
 
 Maintainers: [`PUBLISHING.md`](PUBLISHING.md) has the step-by-step for cutting a release.
 
@@ -220,12 +225,22 @@ database:
   url: env:DATABASE_URL
   read_only: true            # refuses non-SELECT; warns if the credential can write
 model:
+  provider: anthropic         # anthropic | openai — one provider powers every role
   api_key: env:ANTHROPIC_API_KEY
-  default: claude-opus-4-8    # per-role models (agent/judge/coach/...) override default
-  # base_url: env:CLAUDE_GATEWAY   # optional: route Claude through a proxy / AI gateway
+  default: claude-opus-4-8     # per-role models (agent/judge/coach/...) override default
+  # base_url: env:LLM_GATEWAY  # optional: route the provider through a proxy / AI gateway
 ```
 
-See [§4 of the spec](docs/sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles. To route through a corporate proxy or AI gateway, set `model.base_url` (or pass `base_url=` to the runtime `load()`) — no other change needed.
+To use OpenAI instead, switch the three provider lines (everything else is identical):
+
+```yaml
+model:
+  provider: openai
+  api_key: env:OPENAI_API_KEY
+  default: gpt-5
+```
+
+sqbyl uses a single provider for everything — agent, judges, and Coach — so you pick one and it applies across the loop (no mixing). See [§4 of the spec](docs/sqbyl-design-spec.md) for the full manifest, including per-role model pinning and automation toggles. To route through a corporate proxy or AI gateway, set `model.base_url` (or pass `base_url=` to the runtime `load()`) — no other change needed.
 
 ---
 
@@ -247,7 +262,7 @@ Governance, RBAC, lineage, and catalog management are deliberately **not** reimp
 ## Requirements
 
 - Python (managed via [`uv`](https://github.com/astral-sh/uv))
-- An Anthropic API key (`ANTHROPIC_API_KEY`)
+- An LLM provider API key — Anthropic (`ANTHROPIC_API_KEY`) or OpenAI (`OPENAI_API_KEY`)
 - A SQL database, reachable read-only (`DATABASE_URL`). DuckDB and Postgres are the first-class dialects; SQLite, MySQL, Snowflake, and BigQuery are supported behind a dialect seam.
 
 ---

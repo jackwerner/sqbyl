@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 
 from sqbyl.models import SqbylManifest
-from sqbyl_runtime.llm.anthropic_client import AnthropicLLMClient
 from sqbyl_runtime.llm.base import LLMClient
+from sqbyl_runtime.llm.factory import build_provider_client
 from sqbyl_runtime.llm.replay import RecordReplayLLMClient
 
 
@@ -43,7 +43,8 @@ def build_llm_client(
     """
     if replay is not None:
         return RecordReplayLLMClient(replay, mode="replay")
-    real = AnthropicLLMClient(
+    real = build_provider_client(
+        manifest.model.provider,
         api_key=_resolve_api_key(manifest),
         base_url=_resolve_env_ref(manifest.model.base_url),
     )
