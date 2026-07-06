@@ -10,17 +10,23 @@ from sqbyl_runtime.llm.base import (
     Message,
     Usage,
 )
+from sqbyl_runtime.llm.factory import (
+    SUPPORTED_PROVIDERS,
+    build_provider_client,
+)
 from sqbyl_runtime.llm.mock import (
     MockLLMClient,
     structured_reply,
     text_reply,
 )
+from sqbyl_runtime.llm.openai_client import OpenAILLMClient
 from sqbyl_runtime.llm.replay import (
     CassetteMissError,
     RecordReplayLLMClient,
 )
 
 __all__ = [
+    "SUPPORTED_PROVIDERS",
     "AnthropicLLMClient",
     "CassetteMissError",
     "LLMClient",
@@ -28,8 +34,10 @@ __all__ = [
     "LLMResponse",
     "Message",
     "MockLLMClient",
+    "OpenAILLMClient",
     "RecordReplayLLMClient",
     "Usage",
+    "build_provider_client",
     "structured_reply",
     "text_reply",
 ]

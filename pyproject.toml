@@ -9,6 +9,10 @@ members = ["packages/*"]
 dev = [
     "sqbyl",
     "sqbyl-runtime",
+    # Both provider SDKs are optional extras of the runtime, but the dev/test env needs both
+    # installed: the real-client unit tests build each SDK client via `_ensure_client()`.
+    "anthropic>=0.116.0",
+    "openai>=1.40",
     "ruff>=0.6",
     "pytest>=8",
     "mypy>=1.11",

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Jack Werner" }]
-keywords = ["text-to-sql", "sql", "llm", "claude", "anthropic", "agent"]
+keywords = ["text-to-sql", "sql", "llm", "claude", "anthropic", "openai", "agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -19,7 +19,6 @@ classifiers = [
 ]
 dependencies = [
     "pydantic>=2.7,<3",
-    "anthropic>=0.116.0",
     "sqlalchemy>=2.0",
     "duckdb>=1.0",
     "duckdb-engine>=0.13",
@@ -27,7 +26,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Dialect drivers are optional so the minimal runtime stays light. DuckDB is the default
+# Provider SDKs are optional so the runtime is provider-neutral: pick one and install its
+# extra, e.g. `pip install sqbyl-runtime[openai]`. A bare install talks to no provider until
+# you choose. The client for each raises a matching install hint if its SDK is missing.
+anthropic = ["anthropic>=0.116.0"]
+openai = ["openai>=1.40"]
+# Dialect drivers are optional too, so the minimal runtime stays light. DuckDB is the default
 # (a hard dep above); SQLite needs no driver (Python stdlib). Install the extra for the
 # dialect you target, e.g. `pip install sqbyl-runtime[postgres]`. The dialect seam raises
 # a matching install hint when a driver is missing (db/dialects.py).

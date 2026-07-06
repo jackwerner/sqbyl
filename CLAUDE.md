@@ -15,7 +15,7 @@ New work should respect the invariants below (CI enforces the structural ones) a
 
 ## What sqbyl is
 
-An open-source, Claude-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over a user's own SQL database. One Anthropic API key powers everything: the SQL-writing agent, the LLM judges that score it, and the **Coach** that reads eval failures and proposes applyable file diffs. A project is a git-native directory of plain YAML/Markdown; a release is a single portable JSON. The differentiator is the closed improvement loop (build → eval → coach → re-eval), all transparent and editable.
+An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over a user's own SQL database. One provider key (Anthropic **or** OpenAI — chosen per project via `model.provider`, no mixing) powers everything: the SQL-writing agent, the LLM judges that score it, and the **Coach** that reads eval failures and proposes applyable file diffs. Provider clients live behind the `LLMClient` seam in `sqbyl-runtime`, selected by `build_provider_client`; each SDK is an optional extra (`sqbyl-runtime[anthropic]` / `[openai]`). A project is a git-native directory of plain YAML/Markdown; a release is a single portable JSON. The differentiator is the closed improvement loop (build → eval → coach → re-eval), all transparent and editable.
 
 ## Toolchain
 

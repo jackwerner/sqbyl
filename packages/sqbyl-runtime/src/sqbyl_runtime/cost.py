@@ -42,11 +42,18 @@ class ModelRate:
     cache_read: float
 
 
-# Approximate Anthropic list prices (USD / 1M tokens). Update as pricing changes.
+# Approximate list prices (USD / 1M tokens). Update as pricing changes.
+# OpenAI caches automatically with no separate cache-*write* charge, so cache_write == input
+# for those rows; cache_read is the discounted cached-input rate.
 MODEL_RATES: dict[str, ModelRate] = {
+    # Anthropic
     "claude-opus-4-8": ModelRate(input=15.0, output=75.0, cache_write=18.75, cache_read=1.5),
     "claude-sonnet-4-6": ModelRate(input=3.0, output=15.0, cache_write=3.75, cache_read=0.3),
     "claude-haiku-4-5-20251001": ModelRate(input=1.0, output=5.0, cache_write=1.25, cache_read=0.1),
+    # OpenAI (gpt-5 family)
+    "gpt-5": ModelRate(input=1.25, output=10.0, cache_write=1.25, cache_read=0.125),
+    "gpt-5-mini": ModelRate(input=0.25, output=2.0, cache_write=0.25, cache_read=0.025),
+    "gpt-5-nano": ModelRate(input=0.05, output=0.4, cache_write=0.05, cache_read=0.005),
 }
 # Fallback when a model id isn't in the table — priced as the flagship so estimates never
 # silently read as $0. Note this same rate prices *actual* metered spend too, so a real call

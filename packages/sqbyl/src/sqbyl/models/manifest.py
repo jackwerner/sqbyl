@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
+from sqbyl_runtime.llm.factory import SUPPORTED_PROVIDERS
 from sqbyl_runtime.models import Dialect, SelectionConfig, SqbylModel
 
 # Roles that can pin their own model; each falls back to ``ModelConfig.default``.
@@ -34,16 +35,22 @@ class DatabaseConfig(SqbylModel):
 
 
 class ModelConfig(SqbylModel):
-    """One API key, many roles. Each role's model is independently pinnable; unset
-    roles fall back to ``default`` (spec §4)."""
+    """One provider + key, many roles. A project picks a single ``provider`` and uses it for
+    everything (no mixing); each role's model is independently pinnable and unset roles fall
+    back to ``default`` (spec §4)."""
 
-    provider: str = "anthropic"
-    api_key: str = Field(description="Prefer 'env:ANTHROPIC_API_KEY' indirection.")
+    provider: str = Field(
+        default="anthropic",
+        description=f"LLM backend; one of {', '.join(SUPPORTED_PROVIDERS)}. Used for every role.",
+    )
+    api_key: str = Field(
+        description="Prefer 'env:' indirection, e.g. env:ANTHROPIC_API_KEY or env:OPENAI_API_KEY.",
+    )
     base_url: str | None = Field(
         default=None,
         description=(
-            "Optional alternate Claude endpoint (corporate proxy / AI gateway). "
-            "Plain URL or 'env:VAR'. Unset uses Anthropic's default."
+            "Optional alternate provider endpoint (corporate proxy / AI gateway). "
+            "Plain URL or 'env:VAR'. Unset uses the provider's default."
         ),
     )
     default: str = "claude-opus-4-8"
@@ -53,6 +60,14 @@ class ModelConfig(SqbylModel):
     synth_model: str | None = None
     coach_model: str | None = None
     judge_model: str | None = None
+
+    @model_validator(mode="after")
+    def _check_provider(self) -> ModelConfig:
+        if self.provider not in SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"unknown provider {self.provider!r}; supported: {', '.join(SUPPORTED_PROVIDERS)}"
+            )
+        return self
 
     def for_role(self, role: str) -> str:
         """Resolve the model id for a role, falling back to ``default``."""

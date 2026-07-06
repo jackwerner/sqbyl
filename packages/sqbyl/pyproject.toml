@@ -29,6 +29,12 @@ dependencies = [
     "uvicorn>=0.30",
 ]
 
+[project.optional-dependencies]
+# Provider SDKs are optional and provider-neutral (see sqbyl-runtime): pick one and install
+# its extra alongside the toolkit, e.g. `pip install sqbyl[openai]`.
+anthropic = ["sqbyl-runtime[anthropic]==0.1.0"]
+openai = ["sqbyl-runtime[openai]==0.1.0"]
+
 [project.scripts]
 sqbyl = "sqbyl.cli:main"
 
