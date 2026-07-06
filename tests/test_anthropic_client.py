@@ -159,3 +159,45 @@ def test_missing_key_is_a_clear_error(monkeypatch: pytest.MonkeyPatch) -> None:
         client.complete(
             LLMRequest(model="claude-opus-4-8", messages=[Message(role="user", content="hi")])
         )
+
+
+class SequencedMessages:
+    """Returns/raises a scripted sequence of replies, recording every call's kwargs."""
+
+    def __init__(self, replies: list[Any]) -> None:
+        self._replies = list(replies)
+        self.calls: list[dict[str, Any]] = []
+
+    def create(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        reply = self._replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+
+class SequencedSDK:
+    def __init__(self, replies: list[Any]) -> None:
+        self.messages = SequencedMessages(replies)
+
+
+def _temperature_deprecated_400() -> Exception:
+    exc = type("BadRequestError", (Exception,), {})(
+        "Error code: 400 - `temperature` is deprecated for this model."
+    )
+    exc.status_code = 400  # type: ignore[attr-defined]
+    return exc
+
+
+def test_deprecated_temperature_is_stripped_and_retried() -> None:
+    # Newer Claude models (e.g. claude-opus-4-8) reject a custom temperature. The compat
+    # shim should drop it and retry once, transparently to the caller.
+    sdk = SequencedSDK([_temperature_deprecated_400(), _text_message()])
+    client = AnthropicLLMClient(client=sdk)
+    resp = client.complete(
+        LLMRequest(model="claude-opus-4-8", messages=[Message(role="user", content="hi")])
+    )
+    assert resp.text == "hello"
+    assert len(sdk.messages.calls) == 2
+    assert "temperature" in sdk.messages.calls[0]  # first attempt sent it
+    assert "temperature" not in sdk.messages.calls[1]  # retry dropped it
