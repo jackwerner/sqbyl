@@ -19,6 +19,11 @@ sqbyl eval test                 # the honest, held-out accuracy number
 sqbyl release create --tag v1   # ship it as one portable JSON
 ```
 
+<figure markdown>
+  ![sqbyl answering a natural-language question with SQL and rows](assets/demo.gif)
+  <figcaption>One question → plan, SQL, and rows on the bundled DuckDB project.</figcaption>
+</figure>
+
 ## Why sqbyl
 
 If you want a trustworthy natural-language-to-SQL surface over a plain

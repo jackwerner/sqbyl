@@ -22,12 +22,9 @@ sqbyl eval test                 # the honest, held-out accuracy number
 sqbyl release create --tag v1   # ship it as one portable JSON
 ```
 
-<!-- Demo GIF: render with `vhs docs/demo.tape` (needs a provider key — spends a few cents),
-     commit docs/assets/demo.gif, then uncomment:
 <p align="center">
-  <img src="docs/assets/demo.gif" alt="sqbyl demo" width="760">
+  <img src="docs/assets/demo.gif" alt="sqbyl answering a natural-language question with SQL and rows" width="760">
 </p>
--->
 
 
 
