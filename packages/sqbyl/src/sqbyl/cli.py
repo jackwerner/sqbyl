@@ -102,6 +102,20 @@ def _opt(args: list[str], name: str) -> str | None:
     return None
 
 
+def _positionals(args: list[str], consumed: set[str | None] | None = None) -> list[str]:
+    """Positional args only: drop bare flags, the given consumed option values, and the raw
+    ``--budget`` token.
+
+    Every paid command shares ``--budget``; :func:`_budget_opts` parses its value but does not
+    remove it from ``args``. Without stripping it here, a space-separated ``--budget 1`` leaks
+    ``1`` as a positional — e.g. ``sqbyl ask "q" --budget 1`` would read ``1`` as the project
+    directory. ``None`` entries in ``consumed`` (an absent option) are harmless.
+    """
+    dropped = set(consumed) if consumed else set()
+    dropped.add(_opt(args, "budget"))
+    return [a for a in args if not a.startswith("-") and a not in dropped]
+
+
 def _meter(
     project: Project, usage: Usage, *, model: str, command: str, role: str, run_id: str
 ) -> float:
@@ -382,7 +396,7 @@ def _optimize(args: list[str]) -> int:
     replay, record = _opt(args, "replay"), _opt(args, "record")
     as_json = "--json" in args
     consumed = {target_opt, rounds_opt, gain_opt, replay, record}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
 
     # optimize is autonomous — it spends across many rounds without a human in the loop — so a
@@ -526,7 +540,7 @@ def _ask(args: list[str]) -> int:
         return 2
     budget, auto, dry_run = budget_parse
     replay = _opt(args, "replay")
-    positional = [a for a in args if not a.startswith("-") and a != replay]
+    positional = _positionals(args, {replay})
     if not positional:
         print('usage: sqbyl ask "your question" [DIR] [--replay cassette.json]')
         return 2
@@ -625,7 +639,7 @@ def _eval(args: list[str]) -> int:
     budget, auto, dry_run = budget_parse
     replay, record, as_of_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "as-of")
     consumed = {replay, record, as_of_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     split_arg = "dev"
     if positional and positional[0] in ("dev", "test"):
         split_arg = positional.pop(0)
@@ -793,7 +807,7 @@ def _synth(args: list[str]) -> int:
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
     n_opt, as_of_opt = _opt(args, "n"), _opt(args, "as-of")
     consumed = {replay, record, model_opt, n_opt, as_of_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.for_role("synth")
     n = int(n_opt) if n_opt else 20
@@ -892,7 +906,7 @@ def _coach(args: list[str]) -> int:
     budget, auto, dry_run = budget_parse
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
     consumed = {replay, record, model_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.for_role("coach")
 
@@ -1055,7 +1069,7 @@ def _review(args: list[str]) -> int:
 
     host_opt, port_opt = _opt(args, "host"), _opt(args, "port")
     consumed = {host_opt, port_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
     host, port = host_opt or "127.0.0.1", int(port_opt) if port_opt else 8765
 
@@ -1090,7 +1104,7 @@ def _annotate(args: list[str]) -> int:
     budget, auto, dry_run = budget_parse
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
     consumed = {replay, record, model_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
     model = model_opt or project.manifest.model.default
 
@@ -1177,7 +1191,7 @@ def _init(args: list[str]) -> int:
     model_opt, select_opt = _opt(args, "model"), _opt(args, "select")
     n_opt, as_of_opt = _opt(args, "n"), _opt(args, "as-of")
     consumed = {replay, record, model_opt, select_opt, n_opt, as_of_opt}
-    positional = [a for a in args if not a.startswith("-") and a not in consumed]
+    positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
 
     try:
@@ -1342,10 +1356,8 @@ def _serve(args: list[str]) -> int:
     if budget_parse is None:
         return 2
     budget, _auto, _dry = budget_parse
-    positional = [a for a in args if not a.startswith("-")]
     # Drop values consumed by --host/--port/--budget so a bare DIR is what remains.
-    consumed = {host, str(port)} | ({str(budget)} if budget is not None else set())
-    positional = [p for p in positional if p not in consumed]
+    positional = _positionals(args, {host, str(port)})
     project = Project.load(positional[0] if positional else ".")
     endpoint = project_endpoint(project)
     chat = ChatServer(endpoint, paths=SqbylPaths(project.root), budget=budget)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,17 @@ def repo_root() -> Path:
 
 
 @pytest.fixture(scope="session")
-def dogfood_dir() -> Path:
-    return DOGFOOD_DIR
+def dogfood_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A clean copy of the dogfood project, excluding ephemeral local state (``.sqbyl/``).
+
+    Tests copytree this dir into per-test scratch dirs and assert on the usage/trace state
+    they create. Handing back the repo dir directly would drag in any ``.sqbyl/`` (usage.db,
+    traces, runs) left by a local ``sqbyl`` run, poisoning those assertions. Sanitize once
+    per session so a developer running the dogfood project never breaks the suite.
+    """
+    clean = tmp_path_factory.mktemp("dogfood") / "revenue-analytics"
+    shutil.copytree(DOGFOOD_DIR, clean, ignore=shutil.ignore_patterns(".sqbyl"))
+    return clean
 
 
 @pytest.fixture(scope="session")
