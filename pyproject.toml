@@ -22,6 +22,11 @@ dev = [
     # Drives the review console's Starlette TestClient in tests (no live server needed).
     "httpx>=0.27",
 ]
+# Docs-site toolchain, isolated from the default dev env so `uv sync` stays lean.
+# Build/preview with `uv run --group docs mkdocs serve` (or `mkdocs build`).
+docs = [
+    "mkdocs-material>=9.5",
+]
 
 [tool.uv.sources]
 sqbyl = { workspace = true }

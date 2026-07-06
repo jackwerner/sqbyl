@@ -29,6 +29,9 @@ env/
 htmlcov/
 .tox/
 
+# MkDocs build output
+/site/
+
 # Environment / secrets (never commit ANTHROPIC_API_KEY or DATABASE_URL)
 .env
 .env.*
