@@ -58,6 +58,33 @@ def test_mock_structured_output_parses_into_model() -> None:
     assert client.requests[0].response_schema is not None
 
 
+class Batch(BaseModel):
+    questions: list[Plan]
+
+
+def test_parse_recovers_from_stringified_nested_field() -> None:
+    # Observed intermittently on opus/gpt for list-of-object schemas: the forced-tool
+    # argument comes back with the list stuffed in as a JSON *string*. parse() must
+    # decode it and validate rather than crashing the whole command.
+    import json
+
+    from sqbyl_runtime.llm import LLMResponse
+
+    good = [{"plan": "a", "sql": "SELECT 1"}, {"plan": "b", "sql": "SELECT 2"}]
+    resp = LLMResponse(model="claude-opus-4-8", structured={"questions": json.dumps(good)})
+    parsed = resp.parse(Batch)
+    assert isinstance(parsed, Batch)
+    assert [q.sql for q in parsed.questions] == ["SELECT 1", "SELECT 2"]
+
+
+def test_parse_still_raises_on_genuinely_bad_payload() -> None:
+    from sqbyl_runtime.llm import LLMResponse
+
+    resp = LLMResponse(model="claude-opus-4-8", structured={"questions": "not json at all"})
+    with pytest.raises(Exception):  # noqa: B017  (pydantic ValidationError)
+        resp.parse(Batch)
+
+
 def test_mock_exhaustion_is_a_loud_error() -> None:
     client = MockLLMClient([text_reply("only one")])
     _ask(client)

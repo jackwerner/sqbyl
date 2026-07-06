@@ -16,7 +16,7 @@ import hashlib
 import json
 from typing import Any, Literal, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 Role = Literal["user", "assistant"]
 T = TypeVar("T", bound=BaseModel)
@@ -94,10 +94,46 @@ class LLMResponse(BaseModel):
     usage: Usage = Field(default_factory=Usage)
 
     def parse(self, model_cls: type[T]) -> T:
-        """Validate the structured payload into a pydantic model."""
+        """Validate the structured payload into a pydantic model.
+
+        Models occasionally return a forced-tool argument with a nested list/object
+        field stuffed in as a JSON *string* rather than a real array/object (observed
+        intermittently on both providers for list-of-object schemas). Recover from that
+        by JSON-decoding any string field whose first validation attempt fails, then
+        re-validating once — so a flaky double-encode doesn't crash the whole command.
+        """
         if self.structured is None:
             raise ValueError("response has no structured payload to parse")
-        return model_cls.model_validate(self.structured)
+        try:
+            return model_cls.model_validate(self.structured)
+        except ValidationError:
+            recovered = _decode_stringified_json(self.structured)
+            if recovered is self.structured:
+                raise
+            return model_cls.model_validate(recovered)
+
+
+def _decode_stringified_json(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of ``payload`` with JSON-string values decoded to list/dict.
+
+    Only touches string values that parse into a list or dict (the double-encoding
+    failure mode); leaves ordinary string fields alone. Returns the same object
+    (identity) when nothing was decoded, so callers can detect "no recovery possible".
+    """
+    decoded: dict[str, Any] = {}
+    changed = False
+    for key, value in payload.items():
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (ValueError, TypeError):
+                parsed = value
+            if isinstance(parsed, (list, dict)):
+                decoded[key] = parsed
+                changed = True
+                continue
+        decoded[key] = value
+    return decoded if changed else payload
 
 
 class LLMRequest(BaseModel):
