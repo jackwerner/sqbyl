@@ -1,10 +1,26 @@
-# sqbyl
+<p align="center">
+  <img src="docs/assets/sqbyl-logo.png" alt="sqbyl" width="340">
+</p>
 
-**An open-source, Claude-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.**
+<p align="center">
+  <a href="https://github.com/jackwerner/sqbyl/actions/workflows/ci.yml"><img src="https://github.com/jackwerner/sqbyl/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/sqbyl/"><img src="https://img.shields.io/pypi/v/sqbyl" alt="PyPI"></a>
+  <a href="https://pypi.org/project/sqbyl/"><img src="https://img.shields.io/pypi/pyversions/sqbyl" alt="Python"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License: MIT"></a>
+</p>
+
+**An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.**
 
 Bring your own database and one LLM provider key (Anthropic or OpenAI). sqbyl uses your chosen model to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
 
-The full toolkit is built and tested end-to-end. The design is specified in [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), with a narrated first run in [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) and the build history in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
+```bash
+sqbyl init                      # connect, profile, annotate → a working agent
+sqbyl eval dev                  # measure on your iteration set
+sqbyl coach                     # ranked, applyable fixes for whatever failed
+sqbyl coach apply 1 2           # apply them — git tracks every diff
+sqbyl eval test                 # the honest, held-out accuracy number
+sqbyl release create --tag v1   # ship it as one portable JSON
+```
 
 ---
 
@@ -143,7 +159,7 @@ It inherits your app's auth, connection pooling, and observability. `sqbyl run <
 
 ### Async & concurrency
 
-`agent.ask()` is **synchronous and blocking** (an LLM round-trip plus DB queries), but a single loaded `agent` is **safe to call concurrently** — the DB engine pools per-thread connections, the Anthropic client is thread-safe, and trace writes are locked. So under a threadpool it serves concurrent requests correctly.
+`agent.ask()` is **synchronous and blocking** (an LLM round-trip plus DB queries), but a single loaded `agent` is **safe to call concurrently** — the DB engine pools per-thread connections, the provider client (Anthropic or OpenAI) is thread-safe, and trace writes are locked. So under a threadpool it serves concurrent requests correctly.
 
 The one rule for an **async** server: run `ask()` off the event loop, don't call it inside an `async def` directly (that blocks the loop for the whole request).
 
@@ -160,7 +176,7 @@ async def ask(q: str):
     return await run_in_threadpool(agent.ask, q)   # or asyncio.to_thread(agent.ask, q)
 ```
 
-Bound concurrency (threadpool + DB pool size) as you would for any blocking workload. A native-async runtime (`AsyncAnthropic` + async DB) isn't provided — the threadpool pattern is the supported path.
+Bound concurrency (threadpool + DB pool size) as you would for any blocking workload. A native-async runtime (async provider client + async DB) isn't provided — the threadpool pattern is the supported path.
 
 ---
 
@@ -185,7 +201,7 @@ The dev/test split is load-bearing: optimizing and measuring on the same set is 
 
 ---
 
-## Command reference (intended surface)
+## Command reference
 
 ```
 sqbyl init [<db-url>]     # guided: free profile → costed plan → confirm → step through
