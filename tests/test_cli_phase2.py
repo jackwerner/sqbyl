@@ -52,6 +52,31 @@ def test_ask_cli_replays_and_meters(project: Path, capsys: pytest.CaptureFixture
     assert rows[0].cost_usd and rows[0].cost_usd > 0  # type: ignore[attr-defined]
 
 
+def test_positionals_strips_space_separated_budget() -> None:
+    from sqbyl.cli import _positionals
+
+    # Regression: `--budget 1` (space form) must not survive as a positional.
+    assert _positionals(["a question", "--budget", "1"]) == ["a question"]
+    # Consumed option values (e.g. --replay) are dropped alongside it.
+    from sqbyl.cli import _opt
+
+    args = ["dev", "--replay", "cassette.json", "--budget", "$5"]
+    assert _positionals(args, {_opt(args, "replay")}) == ["dev"]
+    # An explicitly-given DIR is preserved.
+    assert _positionals(["q", "./proj", "--budget", "2.50"]) == ["q", "./proj"]
+
+
+def test_ask_budget_flag_is_not_read_as_project_dir(
+    project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Regression: with DIR omitted, `--budget 1` used to leak "1" into positional[1],
+    # so `ask` did `Project.load("1")` → FileNotFoundError. Dry-run keeps it $0.
+    monkeypatch.chdir(project)
+    code = main(["ask", "How many orders are there?", "--budget", "1", "--dry-run"])
+    assert code == 0
+    assert "dry run" in capsys.readouterr().out.lower()
+
+
 def test_annotate_cli_writes_descriptions_and_meters(
     project: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
