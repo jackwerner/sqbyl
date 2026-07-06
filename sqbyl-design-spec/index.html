@@ -1,0 +1,2070 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.">
+      
+      
+        <meta name="author" content="Jack Werner">
+      
+      
+        <link rel="canonical" href="https://jackwerner.github.io/sqbyl/sqbyl-design-spec/">
+      
+      
+        <link rel="prev" href="../cli/">
+      
+      
+        <link rel="next" href="../sqbyl-user-journey/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/sqbyl-icon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Design spec - sqbyl</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sqbyl-product-design-specification" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="sqbyl" class="md-header__button md-logo" aria-label="sqbyl" data-md-component="logo">
+      
+  <img src="../assets/sqbyl-icon.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            sqbyl
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Design spec
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/jackwerner/sqbyl" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jackwerner/sqbyl
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="sqbyl" class="md-nav__button md-logo" aria-label="sqbyl" data-md-component="logo">
+      
+  <img src="../assets/sqbyl-icon.png" alt="logo">
+
+    </a>
+    sqbyl
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/jackwerner/sqbyl" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    jackwerner/sqbyl
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/embedding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Embedding the runtime
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../guides/configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design &amp; internals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design &amp; internals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design spec
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design spec
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-this-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Why this exists
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Why this exists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-the-wedge-and-the-five-push-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 The wedge and the five push principles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-we-replicate-and-how-it-maps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What we replicate, and how it maps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-system-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. System architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. System architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-project-format-plain-files-git-native" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The project format (plain files, git-native)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The project format (plain files, git-native)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sqbylyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sqbyl.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semanticsordersyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        semantics/orders.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examplesrevenueyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        examples/revenue.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trustedmrrsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trusted/mrr.sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmarksdevyaml-the-held-out-testyaml-has-the-same-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        benchmarks/dev.yaml (the held-out test.yaml has the same shape)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-agent-runtime-the-query-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Agent runtime — the query pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#55-the-push-experience-sqbyl-init-to-a-shippable-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 The push experience — sqbyl init to a shippable agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-closing-the-loop-three-modes-of-improvement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Closing the loop — three modes of improvement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#65-the-review-console-building-the-golden-set-without-leaving-the-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 The review console — building the golden set without leaving the platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-evaluation-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Evaluation harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#75-operational-kpis-reporting-the-numbers-a-team-reports-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5 Operational KPIs &amp; reporting — the numbers a team reports up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-coach-llm-assisted-iteration-headline-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The Coach — LLM-assisted iteration (headline feature)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-anthropic-api-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Anthropic API integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#95-implementation-tooling-testing-sqbyl-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5 Implementation tooling &amp; testing sqbyl itself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-release-promotion-blessing-a-version-and-shipping-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Release &amp; promotion — blessing a version and shipping it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-build-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Build order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-open-questions-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Open questions / risks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sqbyl-user-journey/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    User journey
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../sqbyl-implementation-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Implementation plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-why-this-exists" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. Why this exists
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. Why this exists">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-goals" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Non-goals
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-the-wedge-and-the-five-push-principles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.5 The wedge and the five push principles
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-what-we-replicate-and-how-it-maps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. What we replicate, and how it maps
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-system-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. System architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. System architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-the-project-format-plain-files-git-native" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. The project format (plain files, git-native)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. The project format (plain files, git-native)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sqbylyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sqbyl.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#semanticsordersyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        semantics/orders.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examplesrevenueyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        examples/revenue.yaml
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#trustedmrrsql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        trusted/mrr.sql
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#benchmarksdevyaml-the-held-out-testyaml-has-the-same-shape" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        benchmarks/dev.yaml (the held-out test.yaml has the same shape)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-agent-runtime-the-query-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Agent runtime — the query pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#55-the-push-experience-sqbyl-init-to-a-shippable-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 The push experience — sqbyl init to a shippable agent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-closing-the-loop-three-modes-of-improvement" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Closing the loop — three modes of improvement
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#65-the-review-console-building-the-golden-set-without-leaving-the-platform" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 The review console — building the golden set without leaving the platform
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-evaluation-harness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Evaluation harness
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#75-operational-kpis-reporting-the-numbers-a-team-reports-up" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.5 Operational KPIs &amp; reporting — the numbers a team reports up
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-the-coach-llm-assisted-iteration-headline-feature" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. The Coach — LLM-assisted iteration (headline feature)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-anthropic-api-integration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Anthropic API integration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#95-implementation-tooling-testing-sqbyl-itself" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.5 Implementation tooling &amp; testing sqbyl itself
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-interfaces" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Interfaces
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. Interfaces">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#python" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Python
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-release-promotion-blessing-a-version-and-shipping-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Release &amp; promotion — blessing a version and shipping it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-build-order" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. Build order
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-open-questions-risks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Open questions / risks
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/jackwerner/sqbyl/edit/main/docs/sqbyl-design-spec.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="sqbyl-product-design-specification">sqbyl — Product Design Specification<a class="headerlink" href="#sqbyl-product-design-specification" title="Permanent link">&para;</a></h1>
+<p><em>An open-source, Claude-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own data.</em></p>
+<blockquote>
+<p><strong>Codename:</strong> "sqbyl" (from SQL + 'sibyl'... an oracle you consult about your data). 
+<strong>Status:</strong> Design spec / v0. <strong>Audience:</strong> the engineer building this.
+<strong>One-line pitch:</strong> Databricks Genie + Agent Bricks, unbundled from Databricks — bring your own database, bring one Anthropic API key, and let Claude both <em>answer</em> the questions and <em>coach you</em> on how to make the agent answer them better.</p>
+</blockquote>
+<hr />
+<h2 id="1-why-this-exists">1. Why this exists<a class="headerlink" href="#1-why-this-exists" title="Permanent link">&para;</a></h2>
+<p>Databricks ships two tightly-coupled capabilities that, together, are unusually good at turning a messy warehouse into a trustworthy natural-language analytics surface:</p>
+<ul>
+<li><strong>Genie Spaces</strong> — a curated, domain-specific NL→SQL chat surface. You point it at a focused set of tables, annotate them, give it example SQL, define business semantics (metrics/filters), add "trusted assets" (vetted queries that are the single source of truth), and a small amount of text instruction. It generates SQL with chain-of-thought reasoning, executes it, and returns results/visualizations. You curate it iteratively against a <strong>benchmark</strong> set of question→gold-SQL pairs and a monitoring feed.</li>
+<li><strong>Agent Bricks</strong> — describe the task in natural language, connect data, and it <em>auto-generates task-specific evals and LLM judges, synthesizes domain-relevant test data, and searches optimization techniques</em> (prompt optimization, fine-tuning, RL) to hand you a quality/cost-tradeoff frontier you pick from.</li>
+</ul>
+<p>The combination is powerful precisely because it closes the loop: <strong>build → evaluate → let the system tell you how to improve → re-evaluate.</strong> Crucially, the platform itself recommends instruction edits and prompt tweaks.</p>
+<p>The catch: it is <strong>black-boxed behind Databricks</strong> — Unity Catalog, SQL warehouses, partner-powered AI features, account-level entitlements. The semantic layer, the judges, the optimizer, and the model are all inside the walled garden. You cannot run it against a plain Postgres/Snowflake/DuckDB instance with your own model key, you cannot read the judge prompts, and you cannot version the whole thing as plain files in a git repo.</p>
+<p><strong>sqbyl unbundles this.</strong> It is a Python library + CLI that reproduces the <em>loop</em>, not the lock-in:</p>
+<ol>
+<li>You <strong>define your data</strong> (any SQL database) and a portable semantic layer in plain files.</li>
+<li>You <strong>define agents</strong> (text-to-SQL, optionally multi-step).</li>
+<li>Everything hooks to a single <strong>Anthropic API key</strong>. The <em>same</em> Claude model that powers the agent also powers the judges and — the headline feature — <strong>the Coach</strong>, an LLM that reads your eval failures and proposes concrete, applyable edits to your instructions, examples, synonyms, and joins.</li>
+</ol>
+<h3 id="non-goals">Non-goals<a class="headerlink" href="#non-goals" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Not a Databricks clone. No Unity Catalog, no warehouse management, no governance/RBAC layer (that's the host DB's job).</li>
+<li>Not a BI dashboarding tool. Visualization is a thin convenience, not the product.</li>
+<li>Not a fine-tuning platform in v1. Optimization happens in <strong>context space</strong> (instructions/examples/selection), which is where most real-world accuracy lives and which works with a hosted API key. Weight-tuning is a later, optional plug-in.</li>
+</ul>
+<hr />
+<h2 id="15-the-wedge-and-the-five-push-principles">1.5 The wedge and the five push principles<a class="headerlink" href="#15-the-wedge-and-the-five-push-principles" title="Permanent link">&para;</a></h2>
+<p><strong>We will not out-govern Databricks, and we won't try.</strong> Unity Catalog, lineage, RBAC, warehouse management — that is their moat, and we cede it <em>deliberately</em>. BYO-DB is not a limitation we apologize for; it is the strategic move that makes everything else possible: the host database already does governance, security, and access control, so we don't reimplement any of it. Every hour not spent rebuilding a catalog is an hour spent removing a click.</p>
+<p>That leaves exactly two axes where an incumbent platform is weakest and where we choose to win:</p>
+<ul>
+<li><strong>User-friendliness.</strong> The shortest possible path from "I have a database" to "I have a shippable, benchmarked agent." Measured in messages and clicks, and we drive both toward zero.</li>
+<li><strong>Open-source transparency.</strong> Every prompt, every judge, every Coach proposal, and the release format itself are readable plain text/JSON and editable. No black box. This is simultaneously a trust win for users and an onboarding win for contributors to a public repo.</li>
+</ul>
+<p>Everything in this spec is subordinate to five <strong>push principles</strong>. When a design choice is ambiguous, the one that better satisfies these wins:</p>
+<ol>
+<li><strong>Proactive, not reactive — but never a surprise charge.</strong> The tool does the <em>preparation</em> before you ask. All the free, deterministic work (connect, introspect, profile, candidate joins, lexical value sampling) runs up front with no prompting and no cost. The <em>paid</em> work (annotation, synthesis, baseline eval, fix pre-compute) is pre-planned with a cost estimate and stepped through with smart defaults you confirm — never fired silently. You arrive to results, not a blank prompt; you also never type <code>init</code> and watch \$50 of credits vanish without seeing it coming. Proactive means "Claude already drafted the answer and shows you the bill," not "Claude already spent the money."</li>
+<li><strong>Parallel by default.</strong> Independent work runs concurrently (per-table annotation, join inference, candidate synthesis, baseline eval). You wait once, not N times.</li>
+<li><strong>Route attention; spend it only where it's scarce.</strong> Everything carries a confidence score. High-confidence work is applied and shown as <em>already done</em> (one-click undo); only the ambiguous, conflicting, or business-meaning-dependent items are surfaced. The human looks at what <em>only</em> a human can decide — e.g. "what counts as an <em>active</em> customer?" — not at what the data already answers.</li>
+<li><strong>Never a problem without a proposed fix.</strong> Nothing is surfaced as an open question. Every item is a decision with a sensible default already filled in — <strong>accept / edit / reject</strong> — including the items that need human knowledge (best guess pre-filled). Decisions, not homework.</li>
+<li><strong>Fewest round-trips, full visibility.</strong> Batch reviews, "accept all high-confidence," keyboard-driven, smart defaults everywhere, and a visible <strong>readiness signal</strong> showing distance to shippable. Round-trips that cost money carry a <strong>live spend meter and an up-front estimate</strong>, so "low mental calories" never means "low awareness of cost." Minimizing total messages and clicks is a hard product metric, tracked like accuracy — and so is never spending unannounced.</li>
+</ol>
+<p>These are why someone picks sqbyl over wiring up Vanna themselves <em>and</em> over Databricks for a team that doesn't need the governance tax.</p>
+<hr />
+<h2 id="2-what-we-replicate-and-how-it-maps">2. What we replicate, and how it maps<a class="headerlink" href="#2-what-we-replicate-and-how-it-maps" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Databricks concept</th>
+<th>sqbyl equivalent</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Genie Space</td>
+<td><strong>Project</strong> (a directory of files)</td>
+<td>The unit of curation. Versioned in git.</td>
+</tr>
+<tr>
+<td>Unity Catalog tables + column comments</td>
+<td><strong>Semantic layer</strong> (<code>semantics/*.yaml</code>) introspected from any DB + human/LLM annotations</td>
+<td>We can't rely on a pre-existing rich catalog (Vanna's well-known pain) — so sqbyl introspects schema and helps you author the metadata.</td>
+</tr>
+<tr>
+<td>SQL expressions (metrics/filters)</td>
+<td><strong>Measures &amp; named filters</strong></td>
+<td>Business semantics defined once, reused. Addresses "what does <em>revenue</em> mean" consistency.</td>
+</tr>
+<tr>
+<td>Example SQL queries</td>
+<td><strong>Examples</strong> (<code>examples/*.yaml</code>) — NL→SQL pairs</td>
+<td>Retrieved as few-shot context; not necessarily executed.</td>
+</tr>
+<tr>
+<td>Trusted assets (vetted queries/UC functions)</td>
+<td><strong>Trusted assets</strong> — named, parameterized, executable SQL/templates</td>
+<td>Single source of truth; agent prefers these and cites them.</td>
+</tr>
+<tr>
+<td>Text instructions (≤1 per space)</td>
+<td><strong>Instructions</strong> (<code>instructions.md</code>)</td>
+<td>Kept deliberately small; sqbyl enforces the "examples over prose" hierarchy.</td>
+</tr>
+<tr>
+<td>Auto-suggested queries from query history</td>
+<td><strong>Importers</strong></td>
+<td>Optional: ingest a query log / dbt models / existing views and propose examples + joins.</td>
+</tr>
+<tr>
+<td>Prompt matching (value/spelling correction)</td>
+<td><strong>Value matching</strong></td>
+<td>Optional lexical lookup over high-cardinality categorical columns (declared sample values + <code>SELECT DISTINCT</code>), no embeddings.</td>
+</tr>
+<tr>
+<td>Benchmarks (≤500 Q, gold SQL, run as fresh convos)</td>
+<td><strong>Eval sets</strong> (<code>benchmarks/*.yaml</code>)</td>
+<td>Each question = NL + optional gold SQL (or gold function). Run statelessly.</td>
+</tr>
+<tr>
+<td>Genie benchmark scoring (result-set match + LLM judge + "manual review needed")</td>
+<td><strong>Eval harness</strong> — layered scorers</td>
+<td>See §7.</td>
+</tr>
+<tr>
+<td>Agent Bricks auto-eval + synthetic data + optimizer</td>
+<td><strong>Synthesizer</strong> + <strong>Coach</strong> + <strong>Optimizer</strong></td>
+<td>See §6 and §8. The differentiator.</td>
+</tr>
+<tr>
+<td>Monitoring feed + 👍/👎 ratings</td>
+<td><strong>Trace log</strong> + feedback capture</td>
+<td>Local JSONL/SQLite; feeds the Coach.</td>
+</tr>
+<tr>
+<td>Mosaic AI LLM judges</td>
+<td><strong>Claude judges</strong> with <em>open, versioned</em> prompts</td>
+<td>You can read and edit every judge prompt.</td>
+</tr>
+<tr>
+<td>Genie API / publishing a space for use elsewhere</td>
+<td><strong>Release artifact + <code>sqbyl-runtime</code> + exports (LangChain/MCP)</strong></td>
+<td>Ship the curated brain; inject model + DB at the destination.</td>
+</tr>
+<tr>
+<td>(curation lives in the Databricks UI)</td>
+<td><strong><code>sqbyl review</code> local console</strong></td>
+<td>Build/maintain the golden set over plain files, locally.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Design principle inherited from Genie:</strong> <em>data quality and examples beat text instructions.</em> The agent's accuracy ceiling is set by metadata and examples; prose instructions are the last resort. sqbyl bakes this hierarchy into both the context compiler and the Coach's recommendations.</p>
+<p><strong>Design principle inherited from Genie curation:</strong> <em>start small, iterate.</em> A new project defaults to a "small space" posture — warns if you exceed ~5–7 tables or stack conflicting instructions, and the Coach prefers minimal, targeted edits.</p>
+<hr />
+<h2 id="3-system-architecture">3. System architecture<a class="headerlink" href="#3-system-architecture" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>                          ┌────────────────────────────────────────────┐
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                          │                  Anthropic API              │
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                          │   (single ANTHROPIC_API_KEY, one model id)  │
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>                          └───┬───────────────┬───────────────┬─────────┘
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>                 agent calls  │      judge     │     coach     │  synth
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>                              ▼                ▼               ▼
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>┌──────────┐   introspect  ┌─────────────────────────────────────────────┐
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│  Your DB │◄──────────────│            sqbyl core (Python)              │
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│ (pg/duck/│   execute SQL │                                             │
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│  sf/...) │◄──────────────│  ┌───────────┐  ┌───────────┐  ┌──────────┐ │
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>└──────────┘               │  │ Context   │  │ Agent     │  │  Eval    │ │
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>                           │  │ compiler  │─▶│ runtime   │─▶│ harness  │ │
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>   ┌───────────────┐       │  └───────────┘  └───────────┘  └────┬─────┘ │
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>   │ Project files │◄─────▶│        ▲                            │       │
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>   │ (git repo):   │  read │        │        ┌───────────┐       │       │
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>   │  semantics/   │  write│        └────────│   Coach   │◄──────┘       │
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>   │  examples/    │       │                 │(LLM tutor)│ failures+traces│
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>   │  instructions │       │                 └─────┬─────┘               │
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>   │  benchmarks/  │       │   proposes file diffs  │                    │
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>   │  trusted/     │◄──────┼────────────────────────┘                    │
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>   │  .sqbyl/      │ traces│                                             │
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>   └───────────────┘       └─────────────────────────────────────────────┘
+</code></pre></div>
+<h3 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h3>
+<ol>
+<li><strong>Schema introspector + profiler</strong> — connects via SQLAlchemy (or DB-native drivers), reads tables, columns, types, PK/FK, and existing comments, and runs a cheap, read-only <strong>column profile</strong> in the same pass: per column, the deterministic stats a human would otherwise eyeball — null fraction, distinct count (→ categorical vs continuous), min/max/range for numerics and dates, a few percentiles, and top-k frequent values for low-cardinality columns. All of it is plain aggregate SQL (sampled via <code>TABLESAMPLE</code> + the read-only row caps on large tables, never a full billion-row scan), so it costs <strong>zero tokens</strong> and happens before any LLM call. The profile is what lets the annotator do the grunt work: Claude drafts descriptions, synonyms, and <code>sample_values</code> <em>grounded in the actual data</em> (it can see that <code>amount_cents</code> ranges 0–4.2M with no nulls and infer the cents unit, that <code>status</code> has 3 distinct values, that <code>created_at</code> spans 2019→today) instead of guessing from names. Emits draft <code>semantics/*.yaml</code> with a <code>profile:</code> block per column. For databases without FKs, proposes candidate joins (name/type heuristics + LLM) for human confirmation.</li>
+<li><strong>Context compiler</strong> — turns the project files + the live question into the actual prompt context: selected tables, their annotated DDL, relevant measures/filters, applicable few-shot examples, applicable trusted assets, and instructions. Handles <strong>context selection</strong> (which subset of a large schema/example bank to include — done by LLM shortlisting against a compact table/example catalog, or lexical match; no embeddings/vector store) and <strong>prompt caching</strong> of the stable schema block.</li>
+<li><strong>Agent runtime</strong> — the query pipeline (§5). Generates SQL with chain-of-thought, validates, executes, self-repairs, optionally summarizes/plots.</li>
+<li><strong>Eval harness</strong> — runs an eval set as fresh stateless conversations and scores each with the layered scorers (§7). Produces a run report + accuracy/cost/latency aggregates, stored and diffable across runs.</li>
+<li><strong>Coach</strong> — <em>the differentiator</em> (§8). Consumes failing/edge traces and emits ranked, concrete, applyable edits to the project files, each with rationale and predicted impact.</li>
+<li><strong>Synthesizer</strong> — cold-start helper. From schema + a seed description, Claude proposes candidate benchmark questions with gold SQL (you accept/reject), mirroring Agent Bricks' synthetic data.</li>
+<li><strong>Registry / state</strong> (<code>.sqbyl/</code>) — local SQLite + JSONL: traces, run history, model/usage accounting, content hashes of each project version so runs link to the exact config that produced them. Traces are structured to the <strong>OpenTelemetry GenAI semantic conventions</strong> so they stay local-first but can be exported to Langfuse/Phoenix/any OTel backend a team already runs — observability without a bespoke format lock-in.</li>
+<li><strong>Orchestrator</strong> — the engine behind the push principles (§1.5, §5.5). After the free deterministic pass and the user's costed go-ahead, it fans the <strong>approved</strong> paid work out <strong>in parallel</strong> (per-table annotation, join inference, synthesis, baseline eval, fix pre-computation) within the confirmed budget, tolerates partial failure (a failed unit becomes a low-confidence card, never a hard stop), and reports a single live progress checklist with a running spend meter. Concurrency is <strong>bounded and rate-limit-aware</strong>: a worker pool sized to the account's API tier, with retry-and-backoff on 429s, so a 42-table fan-out doesn't self-DoS the key. It also lands the first call that fills the prompt cache before releasing the parallel wave, so the rest read from cache instead of each paying the cache-write cost.</li>
+<li><strong>Attention router + readiness scorer</strong> — assigns a confidence to every machine-made decision, <strong>auto-applies</strong> high-confidence ones (with one-click undo), and surfaces only the rest into a single review queue <strong>sorted by leverage</strong> (the fewest decisions that move readiness the most). Computes the live readiness signal ("86% accuracy · 4 decisions to reach 95%").</li>
+</ol>
+<hr />
+<h2 id="4-the-project-format-plain-files-git-native">4. The project format (plain files, git-native)<a class="headerlink" href="#4-the-project-format-plain-files-git-native" title="Permanent link">&para;</a></h2>
+<p>A sqbyl project is a directory. Everything is human-readable and diffable — the entire Genie "space" config becomes code.</p>
+<p><strong>Two design rules govern this format:</strong></p>
+<ul>
+<li><strong>Dev/test separation is structural, not optional.</strong> Benchmarks are split into a <strong>dev</strong> set (synth-fed; what the Coach and Optimizer iterate against) and a <strong>held-out test</strong> set (ideally hand-authored; the Coach and Optimizer are <em>forbidden</em> from reading it). Because sqbyl's whole loop edits context to push a score up, optimizing and measuring against the same set would be training on the test set — so the headline accuracy that justifies a release (§11) is always reported on the held-out set, with the dev number shown alongside for transparency. The gap between them <em>is</em> your overfitting signal.</li>
+<li><strong>Every file format is backed by a pydantic v2 model.</strong> The YAML/JSON shapes below are not hand-validated — they deserialize into pydantic models that own validation, (de)serialization, and <strong>auto-generated JSON Schema</strong>. That generated schema <em>is</em> the "documented, versioned public interface" the release artifact promises (§11), so the working YAML and the shipped JSON share one source of truth instead of drifting.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>my-project/
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>├── sqbyl.yaml                 # project manifest: db connection, model, defaults
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>├── instructions.md            # the (small) global instruction block
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>├── semantics/
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>│   ├── orders.yaml            # one file per table/view
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>│   └── customers.yaml
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>├── examples/
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>│   └── revenue.yaml           # NL → SQL few-shot examples
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>├── trusted/
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>│   └── mrr.sql                # vetted, parameterized &quot;single source of truth&quot; queries
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>├── benchmarks/
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>│   ├── dev.yaml               # iteration set: synth-fed; Coach/Optimizer tune against this
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>│   └── test.yaml              # held-out set: ideally human-authored; Coach/Optimizer NEVER see it
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>└── .sqbyl/                    # runs, traces, usage, caches (gitignored)
+</code></pre></div>
+<h3 id="sqbylyaml"><code>sqbyl.yaml</code><a class="headerlink" href="#sqbylyaml" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">revenue-analytics</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="no">Answers revenue, churn, and pipeline questions for the GTM team.</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="nt">database</span><span class="p">:</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">dialect</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgresql</span><span class="w">            </span><span class="c1"># postgresql | duckdb | snowflake | bigquery | mysql | sqlite</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">  </span><span class="nt">url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">env:DATABASE_URL</span><span class="w">          </span><span class="c1"># never hard-code creds; env: indirection</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="nt">read_only</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">                </span><span class="c1"># sqbyl refuses non-SELECT unless explicitly allowed.</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">                                 </span><span class="c1"># On connect, sqbyl checks the role&#39;s privileges and WARNS if</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">                                 </span><span class="c1"># the credential can write — strongly suggest pointing</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">                                 </span><span class="c1"># DATABASE_URL at a dedicated read-only role.</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="nt">model</span><span class="p">:</span>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">anthropic</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">  </span><span class="c1"># One key, many roles. Each role&#39;s model is independently pinnable; unset roles</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">  </span><span class="c1"># fall back to `default`. Swap any of these without touching the others.</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">env:ANTHROPIC_API_KEY</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="nt">agent_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w">       </span><span class="c1"># the engine that writes SQL</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span><span class="nt">selection_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w">   </span><span class="c1"># large-schema table/example shortlisting</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="nt">orchestrator_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w"> </span><span class="c1"># cold-start fan-out (annotate/infer/synth)</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">  </span><span class="nt">synth_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w">       </span><span class="c1"># benchmark candidate generation</span>
+<a id="__codelineno-2-21" name="__codelineno-2-21" href="#__codelineno-2-21"></a><span class="w">  </span><span class="nt">coach_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w">       </span><span class="c1"># failure→fix proposals</span>
+<a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a><span class="w">  </span><span class="nt">judge_model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">claude-opus-4-8</span><span class="w">       </span><span class="c1"># can pin a different/independent model for judge independence</span>
+<a id="__codelineno-2-23" name="__codelineno-2-23" href="#__codelineno-2-23"></a><span class="nt">automation</span><span class="p">:</span>
+<a id="__codelineno-2-24" name="__codelineno-2-24" href="#__codelineno-2-24"></a><span class="w">  </span><span class="c1"># Whether the loop runs itself after an eval, or waits to be asked.</span>
+<a id="__codelineno-2-25" name="__codelineno-2-25" href="#__codelineno-2-25"></a><span class="w">  </span><span class="nt">auto_judge</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">               </span><span class="c1"># run LLM judges automatically on ambiguous rows</span>
+<a id="__codelineno-2-26" name="__codelineno-2-26" href="#__codelineno-2-26"></a><span class="w">  </span><span class="nt">auto_coach</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">               </span><span class="c1"># pre-compute fix proposals the moment a run finishes</span>
+<a id="__codelineno-2-27" name="__codelineno-2-27" href="#__codelineno-2-27"></a><span class="w">  </span><span class="c1"># If either is false, sqbyl still surfaces a one-line nudge after each run</span>
+<a id="__codelineno-2-28" name="__codelineno-2-28" href="#__codelineno-2-28"></a><span class="w">  </span><span class="c1"># (&quot;3 rows need judging · run `sqbyl judge`&quot; / &quot;fixes available · run `sqbyl coach`&quot;)</span>
+<a id="__codelineno-2-29" name="__codelineno-2-29" href="#__codelineno-2-29"></a><span class="w">  </span><span class="c1"># so the capability is discoverable without being forced on.</span>
+<a id="__codelineno-2-30" name="__codelineno-2-30" href="#__codelineno-2-30"></a><span class="nt">defaults</span><span class="p">:</span>
+<a id="__codelineno-2-31" name="__codelineno-2-31" href="#__codelineno-2-31"></a><span class="w">  </span><span class="nt">max_tables_warn</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">7</span><span class="w">             </span><span class="c1"># &quot;small space&quot; nudge inherited from Genie best practice</span>
+<a id="__codelineno-2-32" name="__codelineno-2-32" href="#__codelineno-2-32"></a><span class="w">  </span><span class="nt">self_repair_attempts</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<a id="__codelineno-2-33" name="__codelineno-2-33" href="#__codelineno-2-33"></a><span class="w">  </span><span class="nt">prompt_caching</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</code></pre></div>
+<h3 id="semanticsordersyaml"><code>semantics/orders.yaml</code><a class="headerlink" href="#semanticsordersyaml" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">table</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analytics.orders</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">One row per confirmed order. Excludes carts and draft orders.</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">synonyms</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">purchases</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">transactions</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">sales</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="nt">columns</span><span class="p">:</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">order_id</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bigint</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Primary key.</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> nulls</span><span class="p">:</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="nt"> distinct</span><span class="p">:</span><span class="w"> </span><span class="nv">4216890</span><span class="p p-Indicator">,</span><span class="nt"> min</span><span class="p">:</span><span class="w"> </span><span class="nv">1</span><span class="p p-Indicator">,</span><span class="nt"> max</span><span class="p">:</span><span class="w"> </span><span class="nv">4216890</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># auto, deterministic, $0</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">customer_id</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bigint</span>
+<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">FK to customers.customer_id.</span>
+<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> nulls</span><span class="p">:</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="nt"> distinct</span><span class="p">:</span><span class="w"> </span><span class="nv">318204</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amount_cents</span>
+<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">bigint</span>
+<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Order total in cents. Divide by 100 for dollars.</span>
+<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">    </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> nulls</span><span class="p">:</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="nt"> min</span><span class="p">:</span><span class="w"> </span><span class="nv">0</span><span class="p p-Indicator">,</span><span class="nt"> max</span><span class="p">:</span><span class="w"> </span><span class="nv">4200000</span><span class="p p-Indicator">,</span><span class="nt"> p50</span><span class="p">:</span><span class="w"> </span><span class="nv">4999</span><span class="p p-Indicator">,</span><span class="nt"> p95</span><span class="p">:</span><span class="w"> </span><span class="nv">28900</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># range → &quot;this is cents&quot;</span>
+<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">status</span>
+<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">text</span>
+<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">One of &#39;confirmed&#39;,&#39;refunded&#39;,&#39;partial_refund&#39;.</span>
+<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">    </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> nulls</span><span class="p">:</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="nt"> distinct</span><span class="p">:</span><span class="w"> </span><span class="nv">3</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">    </span><span class="nt">sample_values</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">confirmed</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">refunded</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">partial_refund</span><span class="p p-Indicator">]</span><span class="w">   </span><span class="c1"># top-k from profile; powers value-matching</span>
+<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">created_at</span>
+<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">timestamptz</span>
+<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Order confirmation time (UTC).</span>
+<a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">    </span><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> nulls</span><span class="p">:</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="nt"> min</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2019-02-01&quot;</span><span class="p p-Indicator">,</span><span class="nt"> max</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2026-06-29&quot;</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w">   </span><span class="c1"># data&#39;s real coverage window</span>
+<a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="c1"># profile: blocks are written by the introspector at connect time (read-only, sampled on big</span>
+<a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="c1"># tables) and are what let Claude draft the descriptions/synonyms/sample_values above. Drop a</span>
+<a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="c1"># column&#39;s raw sample_values (or set `profile: false`) to keep PII out of the project files.</span>
+<a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="nt">joins</span><span class="p">:</span>
+<a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">to</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analytics.customers</span>
+<a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">many_to_one</span>
+<a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a><span class="w">    </span><span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;orders.customer_id</span><span class="nv"> </span><span class="s">=</span><span class="nv"> </span><span class="s">customers.customer_id&quot;</span>
+<a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="nt">measures</span><span class="p">:</span>
+<a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">net_revenue</span>
+<a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Revenue net of refunds, in dollars.</span>
+<a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a><span class="w">    </span><span class="nt">sql</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;SUM(CASE</span><span class="nv"> </span><span class="s">WHEN</span><span class="nv"> </span><span class="s">status=&#39;confirmed&#39;</span><span class="nv"> </span><span class="s">THEN</span><span class="nv"> </span><span class="s">amount_cents</span><span class="nv"> </span><span class="s">ELSE</span><span class="nv"> </span><span class="s">0</span><span class="nv"> </span><span class="s">END)/100.0&quot;</span>
+<a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a><span class="nt">filters</span><span class="p">:</span>
+<a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">last_quarter</span>
+<a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="w">    </span><span class="nt">sql</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;created_at</span><span class="nv"> </span><span class="s">&gt;=</span><span class="nv"> </span><span class="s">date_trunc(&#39;quarter&#39;,</span><span class="nv"> </span><span class="s">now())</span><span class="nv"> </span><span class="s">-</span><span class="nv"> </span><span class="s">interval</span><span class="nv"> </span><span class="s">&#39;3</span><span class="nv"> </span><span class="s">months&#39;&quot;</span>
+</code></pre></div>
+<h3 id="examplesrevenueyaml"><code>examples/revenue.yaml</code><a class="headerlink" href="#examplesrevenueyaml" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">question</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">What was net revenue last month?</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">sql</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="no">SELECT SUM(amount_cents)/100.0 AS net_revenue</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">    </span><span class="no">FROM analytics.orders</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">    </span><span class="no">WHERE status=&#39;confirmed&#39;</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">      </span><span class="no">AND created_at &gt;= date_trunc(&#39;month&#39;, now()) - interval &#39;1 month&#39;</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">      </span><span class="no">AND created_at &lt;  date_trunc(&#39;month&#39;, now());</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="nt">tags</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">revenue</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">time-window</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<h3 id="trustedmrrsql"><code>trusted/mrr.sql</code><a class="headerlink" href="#trustedmrrsql" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">-- @name: monthly_recurring_revenue</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="c1">-- @params: month (date)</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1">-- @description: Official MRR definition. Prefer this over ad-hoc revenue math.</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">SELECT</span><span class="w"> </span><span class="p">...;</span>
+</code></pre></div>
+<h3 id="benchmarksdevyaml-the-held-out-testyaml-has-the-same-shape"><code>benchmarks/dev.yaml</code>  (the held-out <code>test.yaml</code> has the same shape)<a class="headerlink" href="#benchmarksdevyaml-the-held-out-testyaml-has-the-same-shape" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">q_rev_lastmo</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">question</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">How much revenue did we book last month?</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">gold_sql</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="no">SELECT SUM(amount_cents)/100.0 FROM analytics.orders</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="no">WHERE status=&#39;confirmed&#39; AND created_at &gt;= date_trunc(&#39;month&#39;, now()) - interval &#39;1 month&#39;</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="no">AND created_at &lt; date_trunc(&#39;month&#39;, now());</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">  </span><span class="c1"># gold can instead be: gold_asset: monthly_recurring_revenue</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">  </span><span class="nt">eval_note</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Must</span><span class="nv"> </span><span class="s">net</span><span class="nv"> </span><span class="s">out</span><span class="nv"> </span><span class="s">refunds;</span><span class="nv"> </span><span class="s">a</span><span class="nv"> </span><span class="s">single</span><span class="nv"> </span><span class="s">scalar</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">dollars</span><span class="nv"> </span><span class="s">is</span><span class="nv"> </span><span class="s">expected.&quot;</span>
+</code></pre></div>
+<p>Same schema for both sets; the only difference is who may read them. <code>synth</code> writes to <code>dev.yaml</code>; <code>coach</code>/<code>optimize</code> read <code>dev.yaml</code>; <code>test.yaml</code> is touched by nothing but <code>eval</code> and humans. (A new project may start with a single set; the split becomes load-bearing the moment you run the Optimizer.)</p>
+<hr />
+<h2 id="5-agent-runtime-the-query-pipeline">5. Agent runtime — the query pipeline<a class="headerlink" href="#5-agent-runtime-the-query-pipeline" title="Permanent link">&para;</a></h2>
+<p>A single <code>ask()</code> is a stateless pipeline (multi-turn is a thread of these with prior turns added to context, exactly like a Genie conversation thread):</p>
+<ol>
+<li><strong>Resolve &amp; select.</strong> Pick the relevant subset of tables, examples, measures, filters, and trusted assets. For small projects, include everything. For large schemas, <strong>Claude shortlists</strong> the relevant tables/examples from a compact catalog (names + one-line descriptions), optionally narrowed by lexical match — this is context selection, not vector retrieval, so it stays on the single Anthropic key. Optionally value-match high-cardinality terms ("EMEA" → <code>region='emea'</code>) via a lexical lookup against declared sample values.</li>
+<li><strong>Compile context.</strong> Build the prompt: cached schema/semantics block + selected examples + applicable trusted assets + instructions + the question. Trusted assets are presented as <em>preferred</em> building blocks.</li>
+<li><strong>Generate.</strong> Claude produces (a) a short chain-of-thought plan and (b) candidate SQL. Optionally sample N candidates and self-rank (inference-time scaling helps weaker setups; cheap to gate behind a flag).</li>
+<li><strong>Static-validate.</strong> <code>EXPLAIN</code>/parse the SQL against the live schema (no execution). Catch nonexistent columns, type errors, dialect issues.</li>
+<li><strong>Execute</strong> (read-only enforced) on the user's DB.</li>
+<li><strong>Self-repair.</strong> On static or execution error, feed the error back to Claude up to <code>self_repair_attempts</code> times. (Mirrors the "submit feedback and regenerate" affordance in Genie.)</li>
+<li><strong>Respond.</strong> Return <code>{plan, sql, rows, used_assets, usage, latency}</code>. Optionally an NL summary and a chart spec. If the agent used a trusted asset, the response cites it (Genie's "this came from a trusted asset" transparency).</li>
+</ol>
+<p>Everything is written to the trace log for the Coach to learn from later.</p>
+<hr />
+<h2 id="55-the-push-experience-sqbyl-init-to-a-shippable-agent">5.5 The push experience — <code>sqbyl init</code> to a shippable agent<a class="headerlink" href="#55-the-push-experience-sqbyl-init-to-a-shippable-agent" title="Permanent link">&para;</a></h2>
+<p>This section is the product. Everything else is parts; this is how they feel.</p>
+<p><strong>One command, but it walks you through it.</strong> <code>sqbyl init postgres://…</code> (or run it bare and answer one prompt for the connection string) is the entire required input — but <code>init</code> is <strong>guided by default</strong>: it does the free work, shows you a costed plan, and steps you through confirmations, rather than fanning out and spending on its own. The model is <code>sam deploy --guided</code>, not a black-box batch job: high visibility, low mental calories, no surprise bill.</p>
+<p><strong>Phase 1 — the free pass (no tokens, runs immediately).</strong> Connect, introspect, and <strong>profile</strong> every column (§3.1) — all deterministic, read-only SQL. You see what you've got before anything is spent:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sqbyl init  ▸ connecting…………………………………… done
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>            ▸ reading schema………………………………… 42 tables, 380 columns
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>            ▸ profiling columns (read-only SQL)… done   ($0 — no LLM)
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>            ▸ heuristic join candidates……………… 11 found, 3 ambiguous
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>            ──────────────────────────────────────────────
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>            Ready to enrich with Claude. Here&#39;s the plan and the estimate:
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>              annotate 380 columns + 42 tables        ~$1.20
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>              resolve 3 ambiguous joins               ~$0.05
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>              synthesize ~40-question dev benchmark    ~$0.60
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>              baseline eval (40 Qs)                    ~$0.30
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>              ────────────────────────────────────────────
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>              estimated total                         ~$2.15   on claude-opus-4-8
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>
+<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>            Proceed? [Y]es · [s]elect steps · [m]odel (cheaper) · [n]o
+</code></pre></div>
+<p>Nothing paid has happened yet. You can drop steps, swap to a cheaper model for the bulk work, or bail — and the number you approve is a cap, with a <strong>live spend meter</strong> ticking against it as work runs (it pauses and re-asks before exceeding what you approved).</p>
+<p><strong>Phase 2 — the stepped enrichment (after you confirm).</strong> Approved phases run — efficiently, still parallel under the hood — but each surfaces its results as you go, SAM-style: a default already filled in, three suggestions where there's a real choice, and a one-key confirm. Annotation, <strong>execution-grounded</strong> synthesis (§6.A — only questions whose gold SQL actually ran survive), the baseline eval, and (if <code>auto_coach</code> is on) the Coach's fix proposals land as you watch the meter, not after a silent gap. A unit that fails (e.g. the LLM can't confidently describe one cryptic column) doesn't block anything — it becomes a low-confidence card.</p>
+<p><strong>You arrive to a review queue, not a blank page.</strong> The attention router has already applied everything it's confident about and surfaced only what needs you, <strong>sorted by leverage</strong> — the smallest set of decisions that moves readiness the most. Every card is a <em>decision with a default</em>, never an open question:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>sqbyl review                                        Agent: 86% ▸ 96% in 6 decisions
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>①  Business meaning needed — best guess filled in
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    &quot;active customer&quot; → customers.is_active = true              [Accept] [Edit] [Reject]
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    (used by 4 benchmark questions)
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>②  Accept measure  net_revenue                      fixes 3 benchmark Qs  ▸ +8%
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>    SUM(CASE WHEN status=&#39;confirmed&#39; THEN amount_cents ELSE 0 END)/100      [Accept] [Edit]
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>③  Override judge on Q14?  judge said WRONG — but result rows match gold     [Confirm] [Override]
+<a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>
+<a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a>④  Low-confidence join:  orders ⋈ shipments on order_id                    [Accept] [Edit] [Reject]
+<a id="__codelineno-8-13" name="__codelineno-8-13" href="#__codelineno-8-13"></a>
+<a id="__codelineno-8-14" name="__codelineno-8-14" href="#__codelineno-8-14"></a>      ⌨  a accept · e edit · r reject · A accept-all-high-confidence · ⏎ next
+</code></pre></div>
+<p><strong>The readiness meter is the finish line.</strong> It always shows where you are and how far to target ("86% · 6 decisions to 96%"), and it updates live as you accept. The loop is intentionally short: accept the queue → readiness clears the target → <strong><code>sqbyl release create</code></strong> is the one remaining click, and you have the portable JSON (§11). Most projects should reach shippable in a single review pass — minutes, a handful of keystrokes.</p>
+<p><strong>Unattended mode for CI.</strong> <code>sqbyl init --auto --budget $5</code> skips the prompts and runs the whole thing headless — but <code>--budget</code> is <strong>required</strong> in <code>--auto</code> (it hard-stops at the cap rather than pausing to ask), so even the non-interactive path can't silently overspend. Every step is also its own command (<code>profile</code>, <code>annotate</code>, <code>synth</code>, <code>eval</code>, <code>coach</code>) for power users, and re-running <code>init</code>/<code>eval</code> on a changed schema re-orchestrates only what changed. The guided push is the default because the default should be the fast path <em>and</em> the visible one.</p>
+<hr />
+<h2 id="6-closing-the-loop-three-modes-of-improvement">6. Closing the loop — three modes of improvement<a class="headerlink" href="#6-closing-the-loop-three-modes-of-improvement" title="Permanent link">&para;</a></h2>
+<p>This is the part that makes sqbyl more than "Vanna with Claude." There are three escalating ways to improve a project, all powered by the same API key.</p>
+<p><strong>A. Synthesizer — execution-grounded (cold start).</strong> <code>sqbyl synth</code> drafts candidate benchmark questions, but the key move is that it does <strong>not</strong> just emit question→SQL pairs and hope. For every candidate it writes gold SQL, <strong>executes it against your real database, and discards anything that errors or returns empty/degenerate results</strong> — so a human only ever reviews questions whose answer already runs. It seeds from your semantic layer (each measure, join, and named filter becomes question fodder) so candidates exercise real business logic; stratifies by difficulty (single-table aggregate → filtered → joined → multi-step); and generates phrasing <em>variants</em> per canonical question (Genie benchmarks test phrasing variation explicitly). The best source of all is real questions — traces from <code>sqbyl ask</code>/<code>serve</code> and any imported query log get promoted into candidates. Survivors flow straight into the review console (§6.5) and, once accepted, land in the <strong>dev</strong> set — never the held-out <code>test.yaml</code>, which stays human-curated so it can keep the synth/coach/optimize loop honest. This is what makes a golden set buildable in an afternoon instead of by hand-writing 50 questions, and it mirrors Agent Bricks' synthetic-data generation — except every accepted item is one you've seen execute.</p>
+<p><strong>B. Coach (human-in-the-loop, the default).</strong> Proposals are <strong>pre-computed automatically</strong> the moment an eval run finishes — you don't ask for coaching, it's already waiting in the review queue as accept/edit/reject cards (§8). <code>sqbyl coach</code> just re-opens them.</p>
+<p><strong>C. Optimizer (autonomous, opt-in).</strong> <code>sqbyl optimize --budget $5 --target 0.9</code> — runs Coach→apply→re-eval in a loop <strong>against the dev set</strong>, keeping edits that improve the dev score and reverting those that don't, until the target accuracy or the cost/iteration budget is hit. Returns a <strong>frontier</strong> of project versions with their accuracy/cost/latency, and you pick one — directly analogous to Agent Bricks handing you optimization iterations to choose from, except every version is a readable git diff. Crucially, the optimizer never sees <code>test.yaml</code>; the held-out score is computed <strong>once</strong> on the version you pick, and a large dev↔test gap is surfaced as an overfitting warning rather than hidden.</p>
+<hr />
+<h2 id="65-the-review-console-building-the-golden-set-without-leaving-the-platform">6.5 The review console — building the golden set without leaving the platform<a class="headerlink" href="#65-the-review-console-building-the-golden-set-without-leaving-the-platform" title="Permanent link">&para;</a></h2>
+<p><code>sqbyl review</code> launches a local web app (FastAPI + a small bundled UI; no cloud, no account). It is a thin, opinionated surface over the project files — <strong>not a second source of truth.</strong> Everything it writes lands back in <code>benchmarks/*.yaml</code>, <code>examples/*.yaml</code>, and the semantic files, so the golden set stays plain, git-diffable files.</p>
+<p>It is also the home of the <strong>attention queue</strong> (§5.5): the console never shows you everything, only the leverage-sorted set of decisions the attention router couldn't auto-apply with confidence. High-confidence machine work is already applied (shown collapsed, one-click undo); your eyes go only to the ambiguous and the business-meaning-dependent. Every item carries a <strong>suggested answer pre-filled</strong> and an <strong>accept / edit / reject</strong> control; <code>A</code> accepts all remaining high-confidence items at once; the whole queue is keyboard-drivable so a full pass is keystrokes, not mouse-hunting. The readiness meter at the top updates live as you go.</p>
+<p>For each synthesized candidate the reviewer sees, side by side: the natural-language question, the gold SQL, and <strong>the actual executed result rows</strong>, plus controls to retag difficulty, mark a question as <em>canonical</em> vs a phrasing variant, and edit either the question or the SQL and re-run it live. Because the SQL already executed during synthesis, review is a fast yes/no pass rather than authoring from scratch.</p>
+<p>The same console handles every other decision the loop produces: <strong>judge verdicts</strong> (confirm or override each LLM-judge call on a benchmark row, with its rationale shown — see §7), <strong>Coach proposals</strong> (accept/apply the §8 diffs visually), <strong>eval-run failures</strong> (inspect question + shown context + generated SQL + judge rationale, and promote a now-fixed case straight into the benchmark), and <strong>incoming real-user questions</strong> from <code>serve</code> (one click to add to the golden set). One surface for synthesis, evaluation, judging, and iteration — you never leave the platform to maintain golden data.</p>
+<hr />
+<h2 id="7-evaluation-harness">7. Evaluation harness<a class="headerlink" href="#7-evaluation-harness" title="Permanent link">&para;</a></h2>
+<p>Goal: replicate Genie/Mosaic benchmark scoring with <em>open, editable</em> judge prompts, and run it locally against any DB. Each benchmark question runs as a <strong>fresh, stateless</strong> conversation (no thread context), then passes through layered scorers — modeled on Databricks' Genie benchmark evaluator decomposition.</p>
+<p><strong>Layer 1 — deterministic / code scorers (cheap, run always)</strong>
+- <code>syntax_validity</code> — does the generated SQL parse / <code>EXPLAIN</code> cleanly?
+- <code>schema_accuracy</code> — do all referenced tables/columns exist? (catches hallucinated columns)
+- <code>asset_routing</code> — when a trusted asset <em>should</em> have answered, did the agent use it?
+- <code>result_correctness</code> — <strong>execute</strong> gold SQL and generated SQL, compare result sets (order-insensitive set comparison, with numeric tolerance and column-aliasing normalization). This is the primary, objective signal — the same "compare result sets" approach Genie uses. Exact-match → <strong>Correct</strong>; mismatch or no gold → routed to Layer 2 / <strong>manual review</strong>.</p>
+<p><strong>Layer 2 — LLM judges (Claude; only when needed — e.g. result mismatch, no gold SQL, or fuzzy questions)</strong>
+- <code>semantic_equivalence</code> — are gold SQL and generated SQL logically equivalent despite different result rows (e.g. extra columns, different rounding)? Catches "different SQL, same intent."
+- <code>logical_accuracy</code> — does the SQL correctly implement the question's intent given the schema?
+- <code>completeness</code> — does the answer fully address the question (no missing filter/group-by)?
+- <code>answer_quality</code> — if an NL summary was produced, is it grounded in the rows and correct? Uses the optional <code>eval_note</code> as grading guidance (Genie's "evaluation note").</p>
+<p><strong>Arbiter.</strong> When Layer-1 result-correctness already passes, skip the expensive judges (zero LLM cost on passing rows). When deterministic and LLM scorers disagree, an arbiter pass adjudicates and flags low-confidence cases as <strong>manual review needed</strong> rather than silently scoring them.</p>
+<p><strong>Outputs.</strong> Per-question verdict + rationale; per-run aggregates <strong>reported separately for the dev set and the held-out test set</strong> (accuracy, % manual-review, mean cost, mean latency, token usage); the <strong>run's model versions</strong> for every role (so a score is never divorced from the model that produced it — §11); and a <strong>diff vs the previous run</strong> so you see exactly which questions a change fixed or broke (regression detection). A dev↔test accuracy gap above a threshold prints an overfitting warning. Stored in <code>.sqbyl/runs/</code>.</p>
+<p>Judge prompts live in editable files (<code>judges/*.md</code>) so you can audit and tune them — the opposite of a hosted black-box judge.</p>
+<p><strong>Human-in-the-loop over the judge.</strong> Every LLM-judge verdict is reviewable, not final. In the review console (§6.5) each judged benchmark row shows the question, the generated SQL, the gold answer, and the judge's verdict <strong>with its rationale</strong>; the human clicks <strong>confirm</strong> or <strong>override</strong> (flip the verdict, optionally with a note). Overrides do triple duty:
+1. they become the authoritative result for that run, so the headline accuracy number is human-trusted, not judge-asserted;
+2. they accumulate into a <strong>calibration set</strong> that yields a live judge↔human agreement score (the metric Databricks reports for its own judges), so you know exactly how much to trust the judge on unreviewed rows;
+3. they can be injected back into the judge prompt as few-shot examples — i.e. the judge gets <em>coached</em> the same way the agent does.</p>
+<p>This is the project's unifying pattern: <strong>the LLM proposes, the human reviews, and the correction improves the system</strong> — applied identically to the agent (Coach), the benchmarks (synth review), and the judge (verdict override). Rows the arbiter marks <em>manual review needed</em> are simply the ones surfaced first.</p>
+<hr />
+<h2 id="75-operational-kpis-reporting-the-numbers-a-team-reports-up">7.5 Operational KPIs &amp; reporting — the numbers a team reports up<a class="headerlink" href="#75-operational-kpis-reporting-the-numbers-a-team-reports-up" title="Permanent link">&para;</a></h2>
+<p>Everything sqbyl already meters and traces — <code>.sqbyl/usage.db</code> (every paid call, §9), <code>.sqbyl/runs/</code> (eval aggregates, §7), the OTel traces (latency, §3) — is the raw material for the metrics a user's <em>organization</em> needs, not just the curator at the keyboard. <code>sqbyl report</code> (Python: <code>proj.kpis()</code>) rolls those local stores into a <strong><code>KpiReport</code></strong> — a pydantic model like every other artifact (§4), emitted as a human-readable table <strong>and</strong> machine JSON so it pipes straight into a team's BI/dashboards or a finance spreadsheet. It is a <em>reporting view over data already captured</em>, not new collection: no extra tokens, no extra DB reads, and <strong>aggregates only — never row data</strong> (§13). Cost and quality are reported <strong>separately for dev and the held-out test set</strong> (§7), never conflated.</p>
+<p>The headline is <strong>token unit cost</strong> — what each answered question actually costs — because that is the number that makes "is this defensible to deploy at scale?" concrete. Four families, each aimed at a different stakeholder:</p>
+<ul>
+<li><strong>Unit economics (finance).</strong> Token unit cost: <strong>\$/query</strong> and <strong>tokens/query</strong>; cost per release build; <strong>cache-hit savings %</strong> (prompt-cache reads vs. cold); and a <strong>projected run-rate</strong> (\$/month at a stated query volume) so a team can budget a deployment before shipping it.</li>
+<li><strong>Quality (the curator / data team).</strong> Held-out <strong>accuracy</strong>, <strong>% needing manual review</strong>, <strong>self-repair rate</strong> (answers that needed a retry — a leading indicator of brittle context), <strong>failure/refusal rate</strong>, and the <strong>dev↔test gap</strong> (the overfitting signal, §7) surfaced as a first-class KPI rather than a footnote.</li>
+<li><strong>Performance (engineering / SRE).</strong> Per-query <strong>latency p50/p95</strong> and throughput, read straight from the OTel spans (§3) — the same data any OTel backend would chart, so this never locks observability in.</li>
+<li><strong>Process &amp; readiness (product / leadership).</strong> <strong>Round-trips-to-ship</strong> (the §1.5 product metric — minimizing messages/clicks is tracked "like accuracy"), the <strong>readiness score</strong> (§5.5 distance-to-shippable), and the <strong>accuracy/cost trend across releases</strong> (the optimizer frontier, §6.C) so improvement over time is legible, not anecdotal.</li>
+</ul>
+<p>This is the same posture as the spend meter (§9): make the economics and quality of the agent <em>legible and exportable</em> rather than asking a team to reverse-engineer them from logs. It is downstream of the eval harness (quality KPIs need §7 runs) and the cost machinery (§9), so it fills in as those land — see the implementation plan.</p>
+<hr />
+<h2 id="8-the-coach-llm-assisted-iteration-headline-feature">8. The Coach — LLM-assisted iteration (headline feature)<a class="headerlink" href="#8-the-coach-llm-assisted-iteration-headline-feature" title="Permanent link">&para;</a></h2>
+<p>The core idea: <em>where a closed platform recommends instructions and prompt tweaks, sqbyl does the same in the open — using the same Claude model and key that already power the agent.</em></p>
+<p><strong>Input to the Coach (per eval run):</strong> for each failing or manual-review question <strong>in the dev set</strong> (the Coach is never shown <code>test.yaml</code>) — the NL question, retrieved context that was actually shown to the agent, the agent's chain-of-thought, its generated SQL, the gold SQL/asset, the scorer verdicts and rationales, and any execution error. Plus the <em>current</em> project files and the inherited best-practice rubric (examples &gt; semantics &gt; prose; keep instructions minimal and non-conflicting; prefer trusted assets; small focused table set).</p>
+<p><strong>What the Coach does:</strong> clusters the failures by root cause (e.g. "model doesn't know <code>status='refunded'</code> should be excluded from revenue" → a <em>semantics/measure</em> gap, not a prose gap) and proposes the <em>minimal, highest-leverage</em> edit at the <em>right layer of the hierarchy</em>. It deliberately avoids reaching for text instructions when a column description, synonym, measure, or example would fix it — and it flags <em>conflicts</em> it introduces.</p>
+<p><strong>Output: a ranked list of concrete, applyable proposals.</strong> Each is a file diff, not advice. Example:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>sqbyl Coach — run 2026-06-29T14:02 · 7/30 failing · est. fix value shown
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>[1] Add measure `net_revenue` to semantics/orders.yaml          fixes ~3 Qs  (high)
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    Root cause: agent summed amount_cents without excluding refunds on 3 revenue Qs.
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    + measures:
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    +   - name: net_revenue
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>    +     sql: &quot;SUM(CASE WHEN status=&#39;confirmed&#39; THEN amount_cents ELSE 0 END)/100.0&quot;
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a>[2] Add column synonym &#39;churn&#39; for customers.is_active           fixes ~2 Qs  (high)
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    Root cause: &#39;churned customers&#39; didn&#39;t map to is_active=false.
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a>[3] Add few-shot example for quarter-over-quarter growth         fixes ~1 Q   (med)
+<a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a>    + examples/growth.yaml (new)
+<a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a>
+<a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a>[4] Instruction tweak: clarify fiscal year starts in February    fixes ~1 Q   (low)
+<a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a>    ⚠ touches global instructions — applied last, after data/example fixes.
+<a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a>    (Note: this mirrors Databricks&#39; own fiscal-year example.)
+<a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a>
+<a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a>Apply which? [1,2,3 / all / none / explain N / edit N]
+</code></pre></div>
+<p><strong>Workflow:</strong>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>sqbyl eval dev                         # run → 23/30
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sqbyl coach                            # review proposals above
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>sqbyl coach apply 1 2 3                # writes the diffs to your files (git tracks them)
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>sqbyl eval dev                         # re-run → 29/30, diff shows which Qs flipped
+</code></pre></div></p>
+<p>Because every proposal is a file diff under version control, the human stays in control, the change history is auditable, and a bad suggestion is one <code>git revert</code> away — none of which is true inside a hosted optimizer. The autonomous <code>sqbyl optimize</code> (mode C) simply automates the <code>coach → apply → eval</code> loop with a keep-if-it-helped policy and a spend cap.</p>
+<p><strong>Why "same model, same key" matters here.</strong> The Coach reasons about <em>the agent's own behavior</em>, so using the same Claude model means its mental model of how the agent will interpret an edit is well-calibrated to the agent it's editing. One key, per-role models (§9) — with the option to pin an independent judge model if you want judge independence from the thing being graded.</p>
+<hr />
+<h2 id="9-anthropic-api-integration">9. Anthropic API integration<a class="headerlink" href="#9-anthropic-api-integration" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Single credential.</strong> <code>ANTHROPIC_API_KEY</code> via env (never in files). One key powers every role — and because context selection is LLM/lexical rather than vector-based, there is genuinely no second provider (no embeddings key) to manage.</li>
+<li><strong>One key, per-role models.</strong> Each role — <code>agent</code>, <code>selection</code>, <code>orchestrator</code>, <code>synth</code>, <code>coach</code>, <code>judge</code> — has its own independently pinnable model id in <code>sqbyl.yaml</code>, falling back to a single <code>default</code>. Pin a cheaper model for high-volume orchestration/synth and a stronger one for the agent, or a different family for the judge to get independence from the thing being graded. Default judge == agent for simplicity; the bias tradeoff is documented and independence is a one-line change.</li>
+<li><strong>Automation is configurable.</strong> <code>automation.auto_judge</code> / <code>automation.auto_coach</code> control whether the loop runs itself after an eval. When on (default), proposals and judge verdicts are pre-computed and waiting; when off, sqbyl still prints a one-line nudge pointing at <code>sqbyl judge</code> / <code>sqbyl coach</code>, so the capability stays discoverable without being forced.</li>
+<li><strong>Prompt caching.</strong> The compiled schema/semantics block is large and stable across a benchmark run — cache it so a 30-question eval doesn't resend the schema 30×. Major cost lever.</li>
+<li><strong>Structured outputs.</strong> SQL generation, judge verdicts, and coach proposals use tool/<code>response</code>-style structured returns (strict JSON: <code>{plan, sql}</code> / <code>{verdict, rationale}</code> / <code>{proposals:[...]}</code>) and are parsed defensively.</li>
+<li><strong>Cost: estimated before, metered during, capped throughout.</strong> Every paid command prints an <strong>up-front token/\$ estimate</strong> (from the planned call count × model rates) before spending, shows a <strong>live spend meter</strong> while running, and meters every call to <code>.sqbyl/usage.db</code> after. <code>--budget $N</code> is accepted by <code>init</code>, <code>eval</code>, <code>synth</code>, and <code>optimize</code>: in guided runs it pauses and asks before exceeding the cap; in <code>--auto</code>/CI it hard-stops. <code>sqbyl cost &lt;command&gt;</code> (or any command with <code>--dry-run</code>) returns the estimate without spending a cent. This is what makes the "quality vs cost frontier" — and "no surprise bill" — real rather than aspirational.</li>
+<li><strong>Model-agnostic seam.</strong> A thin <code>LLMClient</code> interface so the same project can later target a local/OSS model for any role while keeping Claude elsewhere — but Anthropic is the first-class, documented path.</li>
+</ul>
+<hr />
+<h2 id="95-implementation-tooling-testing-sqbyl-itself">9.5 Implementation tooling &amp; testing sqbyl itself<a class="headerlink" href="#95-implementation-tooling-testing-sqbyl-itself" title="Permanent link">&para;</a></h2>
+<p>sqbyl's pitch to contributors is "everything is readable and editable" — which only holds if the project is itself approachable and well-tested. The whole spec is about evaluating the <em>user's</em> agent; this section is about not shipping a tool whose own correctness is unmeasured.</p>
+<ul>
+<li><strong>Modern Python baseline.</strong> <code>uv</code> for env/dependency management, <code>ruff</code> for lint+format, <code>pytest</code> for tests, full type hints, and <strong>pydantic v2</strong> as the backbone for every project-file and release-artifact schema (per §4) — which also auto-generates the published JSON Schema.</li>
+<li><strong>Deterministic tests without burning tokens.</strong> The <code>LLMClient</code> seam (§9) is the test seam too: a <strong>mock/recorded client</strong> lets the context compiler, scorers, run-diffing, release compile/load, and read-only guard be tested deterministically with zero API spend. Record-replay fixtures cover the few paths that need real model output.</li>
+<li><strong>A seeded fixture database.</strong> A checked-in <strong>DuckDB</strong> file with the <code>orders</code>/<code>customers</code> schema from §4 gives every test (and every new contributor) a real database to introspect, synth against, and eval on in seconds — no external DB, no credentials. It doubles as the example project in the README.</li>
+<li><strong>The dogfood project.</strong> That fixture ships as a complete example sqbyl project (semantics + dev/test benchmarks) so <code>sqbyl init</code>/<code>eval</code>/<code>coach</code> have an end-to-end smoke test that runs in CI against recorded model responses.</li>
+<li><strong>Observability for free.</strong> Because traces follow the OTel GenAI conventions (§3), the same traces that feed the Coach can be inspected in any OTel viewer during development.</li>
+</ul>
+<hr />
+<h2 id="10-interfaces">10. Interfaces<a class="headerlink" href="#10-interfaces" title="Permanent link">&para;</a></h2>
+<h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a># ── the push: guided by default (§5.5) ──
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>sqbyl init &lt;db-url&gt;              # guided: free profile pass → costed plan → confirm → step through
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>                                 #   (--auto --budget $5 for headless/CI; --dry-run to estimate only)
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>sqbyl review                     # the attention queue + golden-set/judge/proposal review (web UI)
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>sqbyl release create --tag v3    # bless current version → portable JSON (§11)
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a># ── à la carte (each push step, for power users / CI) ──
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>sqbyl introspect                 # read DB schema → draft semantics/*.yaml
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>sqbyl profile                    # read-only column stats → profile: blocks ($0, no LLM)
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>sqbyl annotate [--llm]           # Claude drafts descriptions/synonyms/labels (grounded in profile)
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>sqbyl synth [--n 40] [--budget]  # execution-grounded candidate Qs + verified gold SQL → dev set
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>sqbyl eval [dev|test|&lt;path&gt;] [--budget]   # run eval harness → scored report + run diff
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>                                 #   (auto-judges/auto-coaches per automation config; else nudges)
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>sqbyl judge                      # run/re-open LLM-judge verdicts (when auto_judge is off)
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>sqbyl coach [apply N...]         # re-open / apply the pre-computed context edits (dev only)
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>sqbyl optimize --budget $5 --target 0.9   # autonomous loop on dev; reports held-out test
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>sqbyl cost &lt;command&gt; | &lt;cmd&gt; --dry-run    # estimate $ / tokens for any paid command, spend nothing
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>sqbyl ask &quot;...&quot;                  # one-shot NL→SQL→result (interactive REPL: sqbyl chat)
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>sqbyl runs                       # list runs; sqbyl runs diff &lt;a&gt; &lt;b&gt;
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>sqbyl report [--json] [--volume N]   # roll up usage/runs/traces → KpiReport (§7.5)
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>                                 #   token unit cost, accuracy, latency, readiness — dev vs test
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>
+<a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a># ── ship &amp; serve ──
+<a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>sqbyl run &lt;release.json&gt;         # serve a release: inject DB + key; exposes ask()/REST/MCP
+<a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a>sqbyl serve                      # local web chat against the working project
+</code></pre></div>
+<h3 id="python">Python<a class="headerlink" href="#python" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqbyl</span><span class="w"> </span><span class="kn">import</span> <span class="n">Project</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="n">proj</span> <span class="o">=</span> <span class="n">Project</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;./my-project&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="n">ans</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="s2">&quot;net revenue last month&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">ans</span><span class="o">.</span><span class="n">sql</span><span class="p">,</span> <span class="n">ans</span><span class="o">.</span><span class="n">rows</span><span class="p">)</span>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>
+<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="n">report</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="s2">&quot;dev&quot;</span><span class="p">)</span>                    <span class="c1"># → ScoredRun (held-out: proj.eval(&quot;test&quot;))</span>
+<a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="n">kpis</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">kpis</span><span class="p">(</span><span class="n">volume</span><span class="o">=</span><span class="mi">10_000</span><span class="p">)</span>              <span class="c1"># → KpiReport: $/query, accuracy, p95, readiness (§7.5)</span>
+<a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="n">proposals</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">coach</span><span class="p">(</span><span class="n">report</span><span class="p">)</span>               <span class="c1"># → list[Proposal]</span>
+<a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="n">proj</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">proposals</span><span class="p">[:</span><span class="mi">3</span><span class="p">])</span>                    <span class="c1"># writes diffs to project files</span>
+<a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="n">proj</span><span class="o">.</span><span class="n">eval</span><span class="p">(</span><span class="s2">&quot;dev&quot;</span><span class="p">)</span>                             <span class="c1"># re-measure</span>
+<a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a>
+<a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="n">cands</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">synth</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="mi">40</span><span class="p">)</span>                      <span class="c1"># execution-grounded candidates (review in UI)</span>
+<a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">proj</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">tag</span><span class="o">=</span><span class="s2">&quot;v3&quot;</span><span class="p">)</span>                  <span class="c1"># → portable artifact stamped with the scorecard</span>
+<a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a>
+<a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="c1"># ...elsewhere, in production — model + DB injected, brain unchanged:</span>
+<a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqbyl_runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">load</span>
+<a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="s2">&quot;revenue-analytics-v3&quot;</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="n">env</span><span class="o">.</span><span class="n">DATABASE_URL</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a><span class="n">agent</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="s2">&quot;net revenue last month&quot;</span><span class="p">)</span>
+</code></pre></div>
+<p>The Python API is the substrate; the CLI is a thin wrapper; <code>sqbyl serve</code> exposes the same <code>ask</code>/feedback loop over HTTP so a project can back a real chat app (and downvotes from real users feed the Coach, replicating Genie's monitoring→re-curation loop).</p>
+<hr />
+<h2 id="11-release-promotion-blessing-a-version-and-shipping-it">11. Release &amp; promotion — blessing a version and shipping it<a class="headerlink" href="#11-release-promotion-blessing-a-version-and-shipping-it" title="Permanent link">&para;</a></h2>
+<p>Once your benchmark score is where you want it, you need to be able to say <em>"this version — these annotations, labels, prompts, examples — is the one,"</em> and hand it to production. The thing you ship is the <strong>curated context, not a frozen runtime.</strong> sqbyl makes that distinction the core of release:</p>
+<p><strong>The release (the "brain") — immutable, portable, what you ship:</strong>
+- the semantic layer + every annotation and column label
+- instructions / prompts
+- examples and trusted assets
+- context-selection / value-matching config and judge prompts
+- a manifest: a version tag + timestamp + the <strong>eval scorecard</strong> from the run that justified promotion (which benchmark, accuracy, cost, latency)</p>
+<p><strong>Supplied by the target environment (the "body") — injected at load time, never baked in:</strong>
+- the model + API key (swap Claude for anything — not part of the release)
+- the database connection (staging DB, prod replica — your call)
+- runtime resources</p>
+<p><code>sqbyl release create --tag v3</code> compiles the working project into <strong>a single self-contained JSON file</strong> (<code>revenue-analytics.v3.json</code>) stamped with the score that made you pick it. JSON because this is an open-source, public project: a release is a portable, human-readable, diffable artifact anyone can email, drop in object storage, commit, or load from another language — not a tool-specific binary. The schema is a <strong>documented, versioned public interface</strong> (<code>schema_version</code> in the manifest), so third parties can read, generate, or serve releases without sqbyl itself. The artifact is the unit you move to production. There is deliberately <strong>no model freezing, no output-replay, and no CICD opinion</strong> — the goal is to stay free to change the model or the database, and the brain/body split is what makes that safe. "Promote" is just choosing which release JSON is live; in the simplest case it is "copy this file to prod, set its <code>DATABASE_URL</code> and <code>ANTHROPIC_API_KEY</code>, done."</p>
+<p>A release JSON is roughly:
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="p">{</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">&quot;schema_version&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;revenue-analytics&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span><span class="nt">&quot;tag&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;v3&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span><span class="nt">&quot;created_at&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2026-06-29T14:02:00Z&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a><span class="w">  </span><span class="nt">&quot;scorecard&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;benchmark&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;test&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;accuracy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.94</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;n&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a><span class="w">                 </span><span class="nt">&quot;dev_accuracy&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.97</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;dev_n&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">120</span><span class="p">,</span>
+<a id="__codelineno-13-8" name="__codelineno-13-8" href="#__codelineno-13-8"></a><span class="w">                 </span><span class="nt">&quot;human_reviewed&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;judge_human_agreement&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.97</span><span class="p">,</span>
+<a id="__codelineno-13-9" name="__codelineno-13-9" href="#__codelineno-13-9"></a><span class="w">                 </span><span class="nt">&quot;blessed_with_models&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">&quot;agent&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;claude-opus-4-8&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-10" name="__codelineno-13-10" href="#__codelineno-13-10"></a><span class="w">                                          </span><span class="nt">&quot;judge&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;claude-opus-4-8&quot;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-13-11" name="__codelineno-13-11" href="#__codelineno-13-11"></a><span class="w">  </span><span class="nt">&quot;dialect&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;postgresql&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-12" name="__codelineno-13-12" href="#__codelineno-13-12"></a><span class="w">  </span><span class="nt">&quot;schema_fingerprint&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;sha256:…&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-13" name="__codelineno-13-13" href="#__codelineno-13-13"></a><span class="w">  </span><span class="nt">&quot;semantics&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* tables, columns, labels, joins, measures, filters */</span><span class="w"> </span><span class="p">],</span>
+<a id="__codelineno-13-14" name="__codelineno-13-14" href="#__codelineno-13-14"></a><span class="w">  </span><span class="nt">&quot;instructions&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;…&quot;</span><span class="p">,</span>
+<a id="__codelineno-13-15" name="__codelineno-13-15" href="#__codelineno-13-15"></a><span class="w">  </span><span class="nt">&quot;examples&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* NL → SQL */</span><span class="w"> </span><span class="p">],</span>
+<a id="__codelineno-13-16" name="__codelineno-13-16" href="#__codelineno-13-16"></a><span class="w">  </span><span class="nt">&quot;trusted_assets&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="w"> </span><span class="cm">/* named, parameterized SQL */</span><span class="w"> </span><span class="p">],</span>
+<a id="__codelineno-13-17" name="__codelineno-13-17" href="#__codelineno-13-17"></a><span class="w">  </span><span class="nt">&quot;judges&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* judge prompts */</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-13-18" name="__codelineno-13-18" href="#__codelineno-13-18"></a><span class="w">  </span><span class="nt">&quot;selection&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* large-schema context-selection config */</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-13-19" name="__codelineno-13-19" href="#__codelineno-13-19"></a><span class="p">}</span>
+</code></pre></div></p>
+<p>The headline <code>accuracy</code> is the <strong>held-out test</strong> number — the only one that wasn't optimized against — with the <code>dev_accuracy</code> shown beside it so a reviewer can see the gap. <code>blessed_with_models</code> records exactly which model produced that score, because an accuracy number is only meaningful for the model that generated it (and the brain/body split invites loading the same brain under a different model). The whole <code>schema_version</code>'d shape is <strong>generated from the pydantic models</strong> of §4, so "documented, versioned public interface" is something the build emits, not something a human keeps in sync by hand.</p>
+<p><strong>Loading it elsewhere — the runtime is just a model with logs.</strong> Downstream, the agent should feel like any other model object: load it, call it, serve it from whatever you already have. That's a <strong>separate, dependency-light package, <code>sqbyl-runtime</code></strong> — it contains <em>only</em> load + <code>ask()</code> + structured logging. None of the dev machinery (eval harness, synth, Coach, judges, the review console) ships with it or is even importable; that all lives in the full <code>sqbyl</code> package back in your dev repo. So adding a sqbyl-backed endpoint to an existing prod API is three lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">sqbyl_runtime</span><span class="w"> </span><span class="kn">import</span> <span class="n">load</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">load</span><span class="p">(</span><span class="s2">&quot;revenue-analytics-v3.json&quot;</span><span class="p">,</span> <span class="n">db</span><span class="o">=</span><span class="n">env</span><span class="o">.</span><span class="n">DATABASE_URL</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-opus-4-8&quot;</span><span class="p">)</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/ask&quot;</span><span class="p">)</span>                       <span class="c1"># your API, your auth, your scaling</span>
+<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a><span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="n">q</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<a id="__codelineno-14-6" name="__codelineno-14-6" href="#__codelineno-14-6"></a>    <span class="k">return</span> <span class="n">agent</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="n">q</span><span class="p">)</span>                  <span class="c1"># → {plan, sql, rows, used_assets, usage, latency}</span>
+</code></pre></div>
+<p>The recommended production pattern is exactly this <strong>library embed</strong>: the agent lives inside your existing service and inherits its auth, connection pooling, secrets, and observability — you operate nothing new. (<code>sqbyl run &lt;release&gt;</code> / <code>sqbyl serve</code> exist for non-Python callers and quick HTTP exposure, but they are intentionally <em>not</em> hardened — auth, pooling, rate-limiting, and multi-tenancy are the host's job, so don't put <code>sqbyl serve</code> on the open internet expecting otherwise.) On load the runtime does two cheap, non-fatal checks: <strong>warn on schema mismatch</strong> (a renamed table is the one thing that silently breaks a shipped agent) and <strong>warn on model mismatch</strong> against <code>blessed_with_models</code> (the scorecard was earned on a specific model). Both respect "I might point it at a different DB / model" while still flagging the footgun.</p>
+<p><strong>Monitoring in prod, iteration back in dev.</strong> The runtime emits the same OTel-structured traces and 👍/👎 feedback as everywhere else (§3) — but in prod that's all it does with them: log for monitoring, no inline eval or coaching. The loop back is explicit and one-directional: export those prod traces, drop them into the dev project, and they become synth candidates and eval cases (§6.A) for the <em>next</em> version. So production stays lightweight — a model and its logs — while post-ship usage still feeds the next round of curation without any dev weight running live.</p>
+<p><strong>Interop, if you want it.</strong> Portability comes from the release artifact, <em>not</em> a framework — the core stays dependency-light and you keep control of behavior. The same release can also be exported as a LangChain chain/tool, an <strong>MCP server</strong>, or a plain callable. These are export <em>shapes</em> of the one release, not the foundation; building the core on LangChain would couple your shipped agents to its churn for no portability gain.</p>
+<hr />
+<h2 id="12-build-order">12. Build order<a class="headerlink" href="#12-build-order" title="Permanent link">&para;</a></h2>
+<p><strong>Milestone 0 — Engine.</strong> Introspect + <strong>column profiler</strong> + semantic YAML + context compiler + agent runtime (generate, validate, execute, self-repair) for DuckDB + Postgres. <code>sqbyl ask</code> works end-to-end. (The runtime ships as the minimal, dependency-light <code>sqbyl-runtime</code> package from day one — the dev toolkit depends on it, not vice versa, so the "model with logs" you ship downstream is never bloated by eval/synth/coach.)</p>
+<p><strong>Milestone 1 — Golden set + Evaluation.</strong> Execution-grounded <code>sqbyl synth</code>, the <code>sqbyl review</code> console, the eval-set format, and the harness with Layer-1 deterministic scorers + result-set comparison + run diffs. You can now build a golden set fast and <em>measure</em> against it.</p>
+<p><strong>Milestone 2 — Coach.</strong> LLM judges (Layer 2) + the Coach with applyable diffs, reviewable in the console. This is the moment sqbyl becomes differentiated; prioritize it over breadth of DB support.</p>
+<p><strong>Milestone 2.5 — The push.</strong> The orchestrator (parallel fan-out, partial-failure tolerance) + attention router (confidence scoring, auto-apply, leverage-sorted queue) + readiness meter + the <strong>guided, cost-gated <code>sqbyl init</code></strong> (free profile pass → costed plan → confirm → stepped enrichment with a live spend meter; <code>--auto --budget</code> for CI) and the <strong>estimate/<code>--budget</code>/<code>--dry-run</code></strong> machinery across paid commands (§5.5, §9). This is the product's whole reason to exist over rolling your own — treat it as a headline milestone, not polish.</p>
+<p><strong>Milestone 3 — Release + Optimizer.</strong> <code>sqbyl release</code> / <code>sqbyl run</code> with the brain/body split and scorecard stamping, plus the autonomous budgeted optimization loop and version frontier.</p>
+<p><strong>Milestone 4 — Surface &amp; scale.</strong> <code>sqbyl serve</code>, MCP/LangChain export adapters, LLM/lexical context selection for large schemas/example banks, lexical value-matching, importers (dbt models, query logs), more dialects (Snowflake/BigQuery/MySQL).</p>
+<hr />
+<h2 id="13-open-questions-risks">13. Open questions / risks<a class="headerlink" href="#13-open-questions-risks" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Judge trust.</strong> LLM judges grading an LLM agent of the same family risks shared blind spots. Mitigated by the deterministic result-set scorer as the primary signal, the <strong>human confirm/override loop</strong> that turns judge verdicts into a measured judge↔human agreement score and feeds corrections back as calibration (§7), and an optional independent judge model.</li>
+<li><strong>Benchmark leakage / overfitting.</strong> sqbyl's loop edits context to push a score up, so optimizing and measuring on the same set would be training on the test set. Handled structurally by the <strong>dev/held-out test split</strong> (§4): synth feeds dev, Coach/Optimizer iterate on dev, and the held-out <code>test.yaml</code> — ideally hand-authored — is read only by <code>eval</code> and humans. The released scorecard headlines the held-out number with the dev number beside it, and a large gap prints an overfitting warning (§7, §11).</li>
+<li><strong>Read-only safety.</strong> Default to SELECT-only and refuse non-SELECT unless explicitly opted in; never let the Coach or agent issue DDL/DML. Note this is best-effort at the SQL layer — for real isolation, on connect sqbyl inspects the credential's privileges and <strong>warns (with a suggested fix) if <code>DATABASE_URL</code> can write</strong>, recommending a dedicated read-only DB role. Like Genie/Agent Bricks, sqbyl does not attempt to solve database-level access control itself; that's the host DB's job.</li>
+<li><strong>Profiling cost &amp; PII.</strong> The column profiler is deterministic SQL, but on huge tables a naive <code>COUNT(DISTINCT)</code>/percentile scan is expensive — so it samples (<code>TABLESAMPLE</code> + row caps) and degrades to cheaper stats rather than full scans. And min/max plus captured sample values can surface PII (salary ranges, real emails); profiling is read-only and per-column/per-table opt-out (<code>profile: false</code>), and raw <code>sample_values</code> can be suppressed while keeping the non-identifying stats.</li>
+<li><strong>Surprise spend.</strong> The failure mode of an LLM-heavy "do it all" tool is an unexplained bill. Mitigated by the guided, cost-gated <code>init</code> (free deterministic work first, then a confirmed estimate), up-front estimates + live spend meters + <code>--budget</code> on every paid command, and <code>--dry-run</code>/<code>sqbyl cost</code> to price anything before running it (§5.5, §9). <code>--auto</code> requires <code>--budget</code> and hard-stops.</li>
+<li><strong>Gold-SQL drift.</strong> <code>now()</code>-relative gold answers move over time. Support frozen "as-of" execution or relative-window normalization in the comparator.</li>
+<li><strong>Large schemas.</strong> Beyond ~30 tables, "include everything" breaks; <strong>context-selection quality</strong> (which tables/examples Claude shortlists) becomes the accuracy bottleneck (Genie caps at 30 tables / nudges toward ≤5 for a reason). Treat schema selection as a first-class, separately-evaluable component — and note it is LLM/lexical, not vector retrieval, so it has its own token cost rather than an embedding dependency.</li>
+<li><strong>Semantic-layer authoring cost.</strong> The honest tradeoff vs Genie: with no Unity Catalog, <em>someone</em> must author metadata. <code>sqbyl introspect</code>/<code>annotate</code> + the Coach exist specifically to amortize that cost, but it won't be zero.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../cli/" class="md-footer__link md-footer__link--prev" aria-label="Previous: CLI reference">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                CLI reference
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../sqbyl-user-journey/" class="md-footer__link md-footer__link--next" aria-label="Next: User journey">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                User journey
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      Copyright &copy; Jack Werner — MIT licensed
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/jackwerner/sqbyl" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://pypi.org/project/sqbyl/" target="_blank" rel="noopener" title="pypi.org" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.8 200.5c-7.7-30.9-22.3-54.2-53.4-54.2h-40.1v47.4c0 36.8-31.2 67.8-66.8 67.8H172.7c-29.2 0-53.4 25-53.4 54.3v101.8c0 29 25.2 46 53.4 54.3 33.8 9.9 66.3 11.7 106.8 0 26.9-7.8 53.4-23.5 53.4-54.3v-40.7H226.2v-13.6h160.2c31.1 0 42.6-21.7 53.4-54.2 11.2-33.5 10.7-65.7 0-108.6M286.2 444.7a20.4 20.4 0 1 1 0-40.7 20.4 20.4 0 1 1 0 40.7M167.8 248.1h106.8c29.7 0 53.4-24.5 53.4-54.3V91.9c0-29-24.4-50.7-53.4-55.6-35.8-5.9-74.7-5.6-106.8.1-45.2 8-53.4 24.7-53.4 55.6v40.7h106.9v13.6h-147c-31.1 0-58.3 18.7-66.8 54.2-9.8 40.7-10.2 66.1 0 108.6 7.6 31.6 25.7 54.2 56.8 54.2H101v-48.8c0-35.3 30.5-66.4 66.8-66.4m-6.6-183.4a20.4 20.4 0 1 1 0 40.8 20.4 20.4 0 1 1 0-40.8"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.tracking", "navigation.sections", "navigation.top", "navigation.footer", "content.code.copy", "content.code.annotate", "content.action.edit", "search.suggest", "search.highlight", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

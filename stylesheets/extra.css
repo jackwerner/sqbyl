@@ -1,0 +1,37 @@
+/* sqbyl brand palette — forest green sampled from the logo (#0e4020). */
+:root {
+  --md-primary-fg-color: #0e4020;
+  --md-primary-fg-color--light: #17663a;
+  --md-primary-fg-color--dark: #0a3018;
+  --md-accent-fg-color: #17663a;
+}
+
+/* Slightly lift the primary in dark mode so the header/links stay legible. */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #17663a;
+  --md-accent-fg-color: #2e8b57;
+  --md-typeset-a-color: #4caf7d;
+}
+
+/* The header logo glyph is dark green; the header bar is also dark green, so
+   render it white to sit legibly on the bar (both light and dark schemes). */
+.md-header__button.md-logo img {
+  filter: brightness(0) invert(1);
+}
+
+/* Home-page hero wordmark. */
+.sqbyl-hero {
+  text-align: center;
+  margin: 1.5rem 0 2.5rem;
+}
+.sqbyl-hero img {
+  max-width: 340px;
+  width: 60%;
+  height: auto;
+}
+
+/* In dark mode the dark-green wordmark loses contrast on the dark canvas —
+   render it white so it stays crisp. */
+[data-md-color-scheme="slate"] .sqbyl-hero img {
+  filter: brightness(0) invert(1);
+}
