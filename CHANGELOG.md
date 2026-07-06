@@ -11,6 +11,29 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-07-06
+
+A bug-fix release. 0.1.0 shipped with `sqbyl ask` broken against current default
+models; upgrade is recommended for anyone on `pip install sqbyl`.
+
+### Fixed
+
+- **Live Claude `ask()` restored** — newer Claude models (e.g. `claude-opus-4-8`)
+  reject a custom `temperature`. The client now detects the parameter-rejection error,
+  strips the offending parameter, and retries — so the shipped default model works out
+  of the box. (#39)
+- **`--budget` parsing** — a space-separated `--budget N` value leaked through as a
+  positional argument (e.g. mistaken for the project directory); it's now consumed
+  correctly across every paid command. (#40)
+- **`sqbyl synth` crash on structured output** — models intermittently return a
+  forced-tool argument with a nested list field encoded as a JSON *string*;
+  `LLMResponse.parse()` now decodes and re-validates once instead of raising. (#42)
+
+### Changed
+
+- PyPI package metadata: Documentation / Changelog / Discussions project URLs and
+  discovery keywords, which surface on this release. (#38)
+
 ## [0.1.0] — 2026-07-06
 
 The first versioned release. Everything in the implementation plan (Phases 0–9) is
@@ -57,5 +80,6 @@ may still change with minor-version bumps until `1.0`.
   seam. Dependency vulnerabilities are scanned with `pip-audit`; updates arrive via
   Dependabot.
 
-[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jackwerner/sqbyl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jackwerner/sqbyl/releases/tag/v0.1.0
