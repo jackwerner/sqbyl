@@ -4,7 +4,7 @@
 
 Bring your own database and one LLM provider key (Anthropic or OpenAI). sqbyl uses your chosen model to both *answer* natural-language questions against your data **and** *coach you* on how to make the agent answer them better — then ships the result as a single portable file you can drop into production.
 
-> **Status: pre-release / not yet on PyPI.** The full toolkit (Phases 0–9) is built and tested; install is from source for now, and command/file shapes may still change before a first tagged release. See [Project status](#project-status) for the capability map. The design is fully specified in [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), with a first-run walkthrough in [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) and the build sequence in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
+The full toolkit is built and tested end-to-end. The design is specified in [`sqbyl-design-spec.md`](docs/sqbyl-design-spec.md), with a narrated first run in [`sqbyl-user-journey.md`](docs/sqbyl-user-journey.md) and the build history in [`sqbyl-implementation-plan.md`](docs/sqbyl-implementation-plan.md).
 
 ---
 
@@ -57,21 +57,11 @@ sqbyl ships as **two packages**, so what you develop with is not what you deploy
 
 ## Who this is for
 
-You're putting a natural-language-to-SQL surface over your own warehouse — an internal analytics tool or a product feature — and you need an accuracy number you can defend, plus a system you can read, edit, and version. You work in git, a SQL database, and YAML. You have (or can provision) a **read-only** database role and an Anthropic API key.
+You're putting a natural-language-to-SQL surface over your own warehouse — an internal analytics tool or a product feature — and you need an accuracy number you can defend, plus a system you can read, edit, and version. You work in git, a SQL database, and YAML. You have (or can provision) a **read-only** database role and an LLM provider key (Anthropic or OpenAI).
 
 ---
 
 ## Install
-
-> Not yet published to PyPI. For now, clone and install from source.
-
-```bash
-git clone <this-repo-url> sqbyl
-cd sqbyl
-uv sync                      # sqbyl uses uv for env + dependency management
-```
-
-Once published, the intended install will be:
 
 ```bash
 pip install 'sqbyl[anthropic]'          # full dev toolkit, Claude backend
@@ -83,7 +73,8 @@ The provider SDKs are optional extras — sqbyl is provider-neutral, so pick the
 (`[anthropic]` or `[openai]`) and install just that. A bare `pip install sqbyl` installs the
 toolkit without a provider SDK.
 
-Maintainers: [`PUBLISHING.md`](PUBLISHING.md) has the step-by-step for cutting a release.
+Developing on sqbyl itself? See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the from-source setup
+with [`uv`](https://github.com/astral-sh/uv); maintainers cut releases via [`PUBLISHING.md`](PUBLISHING.md).
 
 ---
 
@@ -280,7 +271,7 @@ The full build sequence in [`sqbyl-implementation-plan.md`](docs/sqbyl-implement
 | Release + runtime + optimizer | ✅ built |
 | More dialects, serve, exports, importers | ✅ built |
 
-**Not yet released to PyPI**, so commands and file shapes may still change before a first tagged version.
+While pre-`1.0`, command and file shapes can still change with minor-version bumps (see [SemVer](https://semver.org) and the [changelog](CHANGELOG.md)).
 
 ---
 

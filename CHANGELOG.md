@@ -11,7 +11,7 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
-## [0.1.0] — unreleased (first tagged version)
+## [0.1.0] — 2026-07-06
 
 The first versioned release. Everything in the implementation plan (Phases 0–9) is
 built, tested, and merged. Pre-`1.0`: the CLI surface and project/release file shapes
@@ -44,6 +44,9 @@ may still change with minor-version bumps until `1.0`.
 - **Surface & scale** — `sqbyl serve` / `run <release>`, export adapters (plain
   callable, LangChain tool, stdlib MCP server), and importers (dbt / query logs /
   views → proposed examples + joins).
+- **Providers** — provider-neutral behind the `LLMClient` seam: Anthropic **or**
+  OpenAI, chosen per project via `model.provider` and used for every role (no mixing).
+  Each SDK is an optional extra (`[anthropic]` / `[openai]`).
 - **Packaging** — `py.typed` markers so downstream type-checkers see the packages'
   types; PyPI metadata (keywords, classifiers, project URLs); a Trusted-Publishing
   release workflow.
