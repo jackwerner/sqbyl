@@ -94,15 +94,25 @@ def _reground_sql(
     ``DATABASE_URL`` unset, the DB restarted, a rotated credential, a network blip — so a
     connection failure is translated into a typed ``{"ok": False, "reason": "db_error", ...}``
     result (finding #9), the same shape the console already returns for a bad edit, rather than
-    propagating as an unhandled 500 the browser can't explain."""
+    propagating as an unhandled 500 the browser can't explain.
+
+    The client gets an actionable-but-generic message (it points at the fix without piping the
+    raw exception — which can carry the connection string / host — into the HTTP response); the
+    full error is printed to the console's own stdout for the local operator to read."""
     try:
         with project.connect() as db:
             evidence, reason, detail = check_gold_sql(db, sql, dialect=dialect)
     except Exception as exc:  # connection: env unset / DB down / credential rotated / network
+        # Log the real cause where the operator launched `sqbyl review`; keep it out of the
+        # response body so a proxied/shared console can't leak connection internals.
+        print(f"[sqbyl review] database connection failed: {exc!r}")
         return None, {
             "ok": False,
             "reason": "db_error",
-            "detail": f"could not reach the database: {exc}",
+            "detail": (
+                "could not reach the database — check the connection (e.g. DATABASE_URL) and "
+                "that it's running, then reload. See the `sqbyl review` terminal for details."
+            ),
         }
     if evidence is None:
         return None, {"ok": False, "reason": reason.value if reason else "error", "detail": detail}
