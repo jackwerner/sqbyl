@@ -11,6 +11,24 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-07-07
+
+A follow-up patch to 0.2.0: a missing (not just empty) `benchmarks/test.yaml` was still
+handled badly.
+
+### Fixed
+
+- **`sqbyl optimize` no longer crashes at the finish line on a missing held-out set** — the
+  single held-out score is the last step, after the whole paid loop; a missing (or empty)
+  `benchmarks/test.yaml` raised an uncaught `FileNotFoundError` there and discarded the
+  entire run's frontier. It now skips the held-out scoring, keeps the frontier, and the
+  report says the held-out wasn't scored (so a rising dev number isn't mistaken for a
+  validated one).
+- **`sqbyl eval test` on a missing `test.yaml`** prints the split-aware "hand-author the
+  held-out set" hint instead of a raw traceback; the underlying "no benchmark file" error is
+  now split-aware everywhere (dev → run `sqbyl synth`; test → hand-author it, invariant 3).
+  Completes the 0.2.0 fix, which only covered an empty-but-existing file.
+
 ## [0.2.0] — 2026-07-07
 
 Fixes and new affordances from a first-time-user setup pass against a live Postgres.
@@ -134,7 +152,8 @@ may still change with minor-version bumps until `1.0`.
   seam. Dependency vulnerabilities are scanned with `pip-audit`; updates arrive via
   Dependabot.
 
-[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/jackwerner/sqbyl/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/jackwerner/sqbyl/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jackwerner/sqbyl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jackwerner/sqbyl/releases/tag/v0.1.0

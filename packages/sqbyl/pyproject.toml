@@ -1,6 +1,6 @@
 [project]
 name = "sqbyl"
-version = "0.2.0"
+version = "0.2.1"
 description = "The full sqbyl dev toolkit: introspect, profile, annotate, synth, eval, Coach, judges, console, optimizer, release builder."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -20,7 +20,7 @@ classifiers = [
 dependencies = [
     # Lockstep: the toolkit and runtime are cut together, so pin the exact runtime
     # this toolkit was built and tested against.
-    "sqbyl-runtime==0.2.0",
+    "sqbyl-runtime==0.2.1",
     "pydantic>=2.7,<3",
     "pyyaml>=6",
     # The review console (spec §6.5) is a local FastAPI app with a bundled UI. It lives
@@ -32,8 +32,8 @@ dependencies = [
 [project.optional-dependencies]
 # Provider SDKs are optional and provider-neutral (see sqbyl-runtime): pick one and install
 # its extra alongside the toolkit, e.g. `pip install sqbyl[openai]`.
-anthropic = ["sqbyl-runtime[anthropic]==0.2.0"]
-openai = ["sqbyl-runtime[openai]==0.2.0"]
+anthropic = ["sqbyl-runtime[anthropic]==0.2.1"]
+openai = ["sqbyl-runtime[openai]==0.2.1"]
 
 [project.scripts]
 sqbyl = "sqbyl.cli:main"

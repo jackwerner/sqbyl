@@ -113,6 +113,9 @@ class OptimizeResult(SqbylModel):
     test_n: int | None = Field(default=None, ge=0)
     # picked dev accuracy − held-out test accuracy: the overfitting signal (spec §7/§11).
     dev_test_gap: float | None = None
+    # Why the held-out score is absent despite ``score_test`` (e.g. no ``benchmarks/test.yaml``),
+    # so the run still returns its frontier instead of crashing at the last step (finding #13).
+    test_skipped_reason: str | None = None
 
     @property
     def picked_point(self) -> FrontierPoint:

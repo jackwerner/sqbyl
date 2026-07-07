@@ -245,11 +245,23 @@ def _finish(
         edits_reverted=reverted,
     )
     if score_test:
-        test = project.eval("test", llm=llm, as_of=as_of, judge=False, persist=True)
-        result.test_accuracy = test.accuracy
-        result.test_n = test.total
-        result.dev_test_gap = frontier[picked].dev_accuracy - test.accuracy
-        result.spent_usd += test.total_cost_usd
+        # The held-out score is the LAST step, after the whole paid loop. A missing test.yaml
+        # (FileNotFoundError) or an empty one (0 questions) must NOT crash here and lose the
+        # frontier the run just paid for — skip the scoring and record why (finding #13).
+        try:
+            test = project.eval("test", llm=llm, as_of=as_of, judge=False, persist=True)
+        except FileNotFoundError:
+            test = None
+        if test is not None and test.total > 0:
+            result.test_accuracy = test.accuracy
+            result.test_n = test.total
+            result.dev_test_gap = frontier[picked].dev_accuracy - test.accuracy
+            result.spent_usd += test.total_cost_usd
+        else:
+            result.test_skipped_reason = (
+                "no held-out set — add a hand-authored benchmarks/test.yaml to score the "
+                "picked version and measure the dev↔test gap (never synthesized, invariant 3)"
+            )
     return result
 
 
