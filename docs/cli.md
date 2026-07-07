@@ -12,7 +12,7 @@ sqbyl eval show <split> <id>   # print one saved row's full detail (plan/SQL/sco
 sqbyl synth [--n 40]      # execution-grounded candidate questions → dev set
 sqbyl coach [apply N... | --regenerate]   # review/apply context edits; reuses the last report ($0)
 sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop on dev
-sqbyl ask "..."           # one-shot NL→SQL→result
+sqbyl ask "..."           # one-shot NL→SQL→result (--narrate adds a plain-English answer)
 sqbyl release create --tag v1             # bless current version → portable JSON
 sqbyl cost <command>      # estimate $ / tokens, spend nothing
 sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)

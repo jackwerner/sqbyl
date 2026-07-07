@@ -3,7 +3,9 @@
 One ``ask()`` is a stateless pipeline: **generate** (a short plan + candidate SQL,
 via strict structured output) → **static-validate** (``EXPLAIN``, no execution) →
 **execute** (read-only) → **self-repair** (feed the error back, up to N times) →
-**respond** ``{plan, sql, rows, used_assets, usage, latency}``.
+**respond** ``{plan, sql, rows, used_assets, usage, latency}`` → *(opt-in)* **narrate**
+(one grounded summarization call turning the executed rows into a plain-English
+``answer``).
 
 This lives in ``sqbyl-runtime`` so the shipped "model with logs" is correct from day
 one: the runtime owns generation, validation, read-only execution, repair, and the
@@ -27,6 +29,23 @@ from sqbyl_runtime.state.traces import Span, TraceWriter, llm_call_span, new_spa
 
 # OTel GenAI operation name for an agent invocation.
 _GEN_AI_OPERATION = "chat"
+
+# How many executed rows to hand the (opt-in) narrator. The narrated sentence is a
+# convenience over the authoritative rows, so a big result set doesn't need to be
+# streamed into a second paid call — cap it and note the truncation in the prompt so the
+# model never implies it summarized rows it didn't see.
+_NARRATE_ROW_CAP = 50
+
+# The narrator is deliberately constrained: it reports the executed table and nothing
+# else. Kept blunt so the summary can never introduce a number the SQL didn't produce
+# (examples > semantics > prose; the rows remain the source of truth).
+_NARRATE_SYSTEM = (
+    "You restate the result of a SQL query as one short, plain-English sentence that "
+    "answers the user's question. Use ONLY the values in the result table below — never "
+    "invent, infer, or round beyond what is shown, and never add facts that are not in the "
+    "rows. If the result is empty, say that no matching rows were found. Answer in one or "
+    "two sentences and nothing else; the table is the source of truth."
+)
 
 
 class AgentGeneration(BaseModel):
@@ -71,15 +90,29 @@ class AgentResult(BaseModel):
     repaired: bool = False
     error: str | None = None
     usage: Usage = Field(default_factory=Usage)
+    # Tokens spent by the opt-in narration call, kept *separate* from ``usage`` (which stays
+    # the agent+selection spend) so it meters under its own role/model per invariant 5. Empty
+    # unless ``narrate`` was requested and the query succeeded; ``total_usage`` sums the two.
+    narration_usage: Usage = Field(default_factory=Usage)
     latency_ms: float = 0.0
     trace_id: str = ""
     # The model that produced this answer — stamped so a production caller logging the result
     # has per-answer provenance (which model), not just the config that was live at load time.
     model: str = ""
+    # Opt-in plain-English restatement of ``rows`` (off by default). A convenience layer over
+    # the authoritative ``columns``/``rows``, which remain the source of truth — never trust a
+    # figure that appears here but not in the rows. ``None`` when narration wasn't requested,
+    # or when the query failed (there's nothing grounded to summarize).
+    answer: str | None = None
 
     @property
     def ok(self) -> bool:
         return self.error is None
+
+    @property
+    def total_usage(self) -> Usage:
+        """Grand-total tokens for this run: agent+selection (``usage``) plus any narration."""
+        return self.usage + self.narration_usage
 
 
 def ask(
@@ -92,6 +125,9 @@ def ask(
     selection_model: str | None = None,
     self_repair_attempts: int = 2,
     max_tokens: int = 2048,
+    narrate: bool = False,
+    narration_model: str | None = None,
+    narration_max_tokens: int = 512,
     trace_writer: TraceWriter | None = None,
 ) -> AgentResult:
     """Answer ``question`` against ``db`` using ``knowledge`` and ``llm``.
@@ -101,6 +137,13 @@ def ask(
     child span per LLM call) when a ``trace_writer`` is given. ``selection_model``
     pins the model for large-schema table shortlisting (spec §5.1); it defaults to
     ``model`` so small projects — which never make a selection call — are unaffected.
+
+    Narration is **opt-in and off by default** (so the ``$0``-by-default, deterministic
+    posture is unchanged): with ``narrate=True`` a single extra summarization call — on
+    ``narration_model`` (defaults to ``model``), grounded strictly on the executed
+    ``columns``/``rows`` — populates ``result.answer`` with a plain-English sentence. It
+    runs only when the query succeeded, is traced as its own GenAI child span, and its
+    tokens land in ``result.narration_usage`` (metered as a distinct role, invariant 5).
     """
     started = time.perf_counter()
     trace_id = new_trace_id()
@@ -179,14 +222,34 @@ def ask(
         rows, error = _validate_and_execute(db, gen.sql)
         if error is None:
             assert rows is not None
+            row_lists = [list(r) for r in rows.rows]
+            # Opt-in: turn the executed rows into a plain-English sentence. Metered apart from
+            # the agent spend (its own role/model, invariant 5) and traced as its own span.
+            answer_text: str | None = None
+            narration_usage = Usage()
+            if narrate:
+                answer_text, narration_usage = _narrate(
+                    question,
+                    rows.columns,
+                    row_lists,
+                    llm=llm,
+                    model=narration_model or model,
+                    max_tokens=narration_max_tokens,
+                    trace_writer=trace_writer,
+                    trace_id=trace_id,
+                    parent_span_id=run_span.span_id,
+                )
+                run_span.attributes["sqbyl.narrated"] = True
             result = _success(
                 question,
                 gen,
                 context,
                 rows_columns=rows.columns,
-                rows=[list(r) for r in rows.rows],
+                rows=row_lists,
                 attempts=attempt_index + 1,
                 usage=total_usage,
+                narration_usage=narration_usage,
+                answer=answer_text,
                 latency_ms=_elapsed_ms(started),
                 trace_id=trace_id,
                 model=model,
@@ -245,6 +308,8 @@ def _success(
     rows: list[list[Any]],
     attempts: int,
     usage: Usage,
+    narration_usage: Usage,
+    answer: str | None,
     latency_ms: float,
     trace_id: str,
     model: str,
@@ -265,10 +330,65 @@ def _success(
         attempts=attempts,
         repaired=attempts > 1,
         usage=usage,
+        narration_usage=narration_usage,
+        answer=answer,
         latency_ms=latency_ms,
         trace_id=trace_id,
         model=model,
     )
+
+
+def _narrate(
+    question: str,
+    columns: list[str],
+    rows: list[list[Any]],
+    *,
+    llm: LLMClient,
+    model: str,
+    max_tokens: int,
+    trace_writer: TraceWriter | None,
+    trace_id: str,
+    parent_span_id: str,
+) -> tuple[str | None, Usage]:
+    """Summarize executed ``rows`` into one grounded sentence; return ``(answer, usage)``.
+
+    A single free-text call whose only input is the question plus a rendering of the
+    result table (capped at :data:`_NARRATE_ROW_CAP`), so the sentence is anchored to real
+    output and can't smuggle in numbers the SQL never produced. Traced as its own GenAI
+    child span (invariant 7). An empty completion yields ``None`` rather than "" so callers
+    can treat "no narration" uniformly."""
+    request = LLMRequest(
+        model=model,
+        messages=[Message(role="user", content=_narration_prompt(question, columns, rows))],
+        system=_NARRATE_SYSTEM,
+        max_tokens=max_tokens,
+        temperature=0.0,
+    )
+    response = llm.complete(request)
+    if trace_writer is not None:
+        trace_writer.write(
+            llm_call_span(
+                request,
+                response,
+                operation=_GEN_AI_OPERATION,
+                name="narrate",
+                trace_id=trace_id,
+                parent_span_id=parent_span_id,
+            )
+        )
+    text = (response.text or "").strip()
+    return (text or None), response.usage
+
+
+def _narration_prompt(question: str, columns: list[str], rows: list[list[Any]]) -> str:
+    """Render the question + a compact pipe-delimited view of the (capped) result table."""
+    shown = rows[:_NARRATE_ROW_CAP]
+    lines = [" | ".join(columns)]
+    lines += [" | ".join("" if v is None else str(v) for v in row) for row in shown]
+    if len(rows) > len(shown):
+        lines.append(f"… ({len(rows) - len(shown)} more rows not shown)")
+    table = "\n".join(lines)
+    return f"Question: {question}\n\nResult table ({len(rows)} row(s)):\n{table}"
 
 
 def _repair_prompt(error: str) -> str:
