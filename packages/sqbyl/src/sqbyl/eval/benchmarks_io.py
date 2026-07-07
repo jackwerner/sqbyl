@@ -49,9 +49,16 @@ def _read_set(project: Project, split: Split) -> list[BenchmarkQuestion]:
     """
     path = benchmark_path(project, split)
     if not path.exists():
+        # Split-aware guidance: `synth` only ever writes dev; the held-out test set is
+        # hand-authored (never synthesized, invariant 3), so pointing a test caller at `synth`
+        # is categorically wrong (finding #8).
+        if split is Split.test:
+            raise FileNotFoundError(
+                f"no benchmarks/test.yaml in {project.root} — the held-out set is hand-authored "
+                "(never synthesized, invariant 3); add questions to benchmarks/test.yaml"
+            )
         raise FileNotFoundError(
-            f"no benchmarks/{split.value}.yaml in {project.root} "
-            f"(run `sqbyl synth` to build the dev set)"
+            f"no benchmarks/dev.yaml in {project.root} (run `sqbyl synth` to build the dev set)"
         )
     raw = load_yaml(path.read_text()) or []
     return [BenchmarkQuestion.model_validate(item) for item in raw]

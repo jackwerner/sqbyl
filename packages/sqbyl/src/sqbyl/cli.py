@@ -591,6 +591,10 @@ def _report_optimize(result: OptimizeResult) -> int:
                 f"  ⚠ dev↔test gap {gap:+.0%} — the loop may have overfit dev; the held-out "
                 "number is the one to trust (spec §7/§11)."
             )
+    elif result.test_skipped_reason:
+        # The loop finished and kept its edits; only the final held-out score is missing. Say
+        # why, so a rising dev number isn't mistaken for a validated one (finding #13).
+        print(f"  ⚠ held-out not scored — {result.test_skipped_reason}")
     print("\nreview the edits with `git diff`; revert with `git checkout` (never auto-committed).")
     return 0
 
@@ -804,7 +808,12 @@ def _eval(args: list[str]) -> int:
         return 2
 
     model = project.manifest.model.for_role("agent")
-    questions = load_for_eval(project, split)
+    # A missing file raises FileNotFoundError; an empty file returns []. Treat both as "no
+    # questions" and print the split-aware hint below, rather than a raw traceback (finding #8).
+    try:
+        questions = load_for_eval(project, split)
+    except FileNotFoundError:
+        questions = []
     if not questions:
         # The hint must differ by split: `synth` only ever writes dev; the held-out test set
         # is architecturally hand-authored (invariant 3), so pointing a test user at `synth`

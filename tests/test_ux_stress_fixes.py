@@ -404,6 +404,34 @@ def test_empty_test_split_gives_hand_authored_hint(
     assert "run `sqbyl synth` first" not in out  # the old, categorically-wrong advice is gone
 
 
+def test_eval_test_missing_file_gives_hint_not_a_traceback(
+    tmp_path: Path,
+    dogfood_dir: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A truly *missing* test.yaml (not just empty) must print the split-aware hint, not raise
+    # an uncaught FileNotFoundError with the categorically-wrong "run synth" advice (finding #8).
+    monkeypatch.setenv("DATABASE_URL", "duckdb:///:memory:")
+    dst = tmp_path / "proj"
+    shutil.copytree(dogfood_dir, dst)
+    (dst / "benchmarks" / "test.yaml").unlink(missing_ok=True)
+    code = main(["eval", "test", str(dst)])
+    assert code == 1  # a clean exit, not a traceback
+    out = capsys.readouterr().out
+    assert "held-out" in out and "hand-authored" in out
+    assert "run `sqbyl synth` first" not in out
+
+
+def test_read_set_missing_file_message_is_split_aware(mini_project: Project) -> None:
+    from sqbyl.eval.benchmarks_io import Split, _read_set
+
+    with pytest.raises(FileNotFoundError, match="hand-authored"):
+        _read_set(mini_project, Split.test)  # held-out: never synthesized
+    with pytest.raises(FileNotFoundError, match="sqbyl synth"):
+        _read_set(mini_project, Split.dev)  # iteration set: synth builds it
+
+
 # ── #12: schema drift — non-destructive column sync + an explicit drift signal ────────────
 
 

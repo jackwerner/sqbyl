@@ -172,6 +172,20 @@ def test_optimize_reverts_the_file_when_a_trial_eval_crashes(
     assert not learned.exists()  # the applied edit was rolled back despite the crash
 
 
+def test_optimize_survives_a_missing_held_out_set(broken: Project) -> None:
+    # The final held-out score is the LAST step. A missing test.yaml must not crash it and lose
+    # the whole run's frontier — the loop's paid work survives, with a clear reason (finding #13).
+    (broken.root / "benchmarks" / "test.yaml").unlink()
+    llm = MockLLMClient([_agent(_CUSTOMERS), _coach_proposal(), _agent(_ORDERS)])
+
+    result = optimize(broken, llm=llm, target=0.9, budget=10.0)  # must not raise
+
+    assert result.stopped is StopReason.target_met
+    assert result.picked == 1  # the accepted edit is still on the frontier
+    assert result.test_accuracy is None and result.test_n is None
+    assert result.test_skipped_reason and "test.yaml" in result.test_skipped_reason
+
+
 # ── budget: the loop hard-stops before a step it can't afford ─────────────────────────────
 
 
