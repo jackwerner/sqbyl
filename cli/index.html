@@ -768,19 +768,26 @@
 <h1 id="cli-reference">CLI reference<a class="headerlink" href="#cli-reference" title="Permanent link">&para;</a></h1>
 <p>The core command surface:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>sqbyl init [&lt;db-url&gt;]     # guided: free profile → costed plan → confirm → step through
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                          #   (--auto --budget $5 for CI; --dry-run to estimate only)
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>sqbyl review              # attention queue + golden-set / judge / proposal review (web UI)
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>sqbyl eval [dev|test]     # run the eval harness → scored report + run diff
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>sqbyl synth [--n 40]      # execution-grounded candidate questions → dev set
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>sqbyl coach [apply N...]  # review / apply pre-computed context edits (dev only)
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop on dev
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>sqbyl ask &quot;...&quot;           # one-shot NL→SQL→result
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>sqbyl release create --tag v1             # bless current version → portable JSON
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>sqbyl cost &lt;command&gt;      # estimate $ / tokens, spend nothing
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>                          #   scaffolds sqbyl.yaml if missing; --auto --budget $5 for CI;
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>                          #   --dry-run to estimate only; --model M reprices every role
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>sqbyl review              # attention queue + golden-set / judge / proposal review (web UI)
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>sqbyl eval [dev|test]     # run the eval harness → scored report + run diff
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>sqbyl eval show &lt;split&gt; &lt;id&gt;   # print one saved row&#39;s full detail (plan/SQL/scorers/judges), $0
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>sqbyl synth [--n 40]      # execution-grounded candidate questions → dev set
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>sqbyl coach [apply N... | --regenerate]   # review/apply context edits; reuses the last report ($0)
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop on dev
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>sqbyl ask &quot;...&quot;           # one-shot NL→SQL→result
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>sqbyl release create --tag v1             # bless current version → portable JSON
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>sqbyl cost &lt;command&gt;      # estimate $ / tokens, spend nothing
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)
 </code></pre></div>
-<p>Per-step à-la-carte commands (<code>introspect</code>, <code>profile</code>, <code>annotate</code>, <code>judge</code>, <code>runs</code>, <code>serve</code>,
-<code>run</code>) are documented in the <a href="../sqbyl-design-spec/">design spec, §10</a>.</p>
+<p><code>sqbyl init</code> <strong>scaffolds <code>sqbyl.yaml</code> for you</strong> when there isn't one — interactively on a
+terminal, or as a ready-to-fill template under <code>--auto</code>. It also runs a <code>$0</code> credential check
+(a token-free provider call) before quoting a plan, so a bad key fails fast, not mid-spend.</p>
+<p>Per-step à-la-carte commands are documented in the <a href="../sqbyl-design-spec/">design spec, §10</a>:
+<code>introspect</code> (add <code>--sync</code> to merge <strong>new</strong> live columns into existing semantics files without
+losing annotations, or <code>--force</code> to redraft), <code>profile</code>, <code>annotate</code>, <code>judge</code>, <code>runs</code>, <code>serve</code>,
+<code>run</code>.</p>
 <h2 id="cost-safety-flags">Cost &amp; safety flags<a class="headerlink" href="#cost-safety-flags" title="Permanent link">&para;</a></h2>
 <p>Every paid command shares the same cost posture (see <a href="../concepts/#cost-posture">Concepts → Cost posture</a>):</p>
 <ul>

@@ -816,9 +816,11 @@ from-source setup with <a href="https://github.com/astral-sh/uv"><code>uv</code>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-ant-...
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://readonly_user@warehouse.internal/analytics<span class="w">   </span><span class="c1"># read-only role</span>
 </code></pre></div>
-<p>Then run the guided setup. It does the free, deterministic work first (connect, read
-schema, profile every column with read-only SQL), shows you a <strong>costed plan</strong>, and only
-spends after you confirm:</p>
+<p>Then run the guided setup. There's <strong>no config file to hand-write</strong> — if <code>sqbyl.yaml</code> is
+missing, <code>init</code> walks you through creating it (name, dialect, connection URL, provider,
+API-key env var). It then does the free, deterministic work first (connect, read schema,
+profile every column with read-only SQL), checks your provider key works (a <code>$0</code>, token-free
+call), shows you a <strong>costed plan</strong>, and only spends after you confirm:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sqbyl<span class="w"> </span>init
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>▸ connecting…………………………………… done
