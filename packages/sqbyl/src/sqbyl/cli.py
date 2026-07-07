@@ -614,16 +614,23 @@ def _ask(args: list[str]) -> int:
         return 2
     budget, auto, dry_run = budget_parse
     replay = _opt(args, "replay")
+    narrate = "--narrate" in args
     positional = _positionals(args, {replay})
     if not positional:
-        print('usage: sqbyl ask "your question" [DIR] [--replay cassette.json]')
+        print('usage: sqbyl ask "your question" [DIR] [--replay cassette.json] [--narrate]')
         return 2
     question = positional[0]
     project = Project.load(positional[1] if len(positional) > 1 else ".")
     model = project.manifest.model.for_role("agent")
+    # Narration is its own role/model so it meters distinctly (invariant 5); unset falls back
+    # to the agent model via ``for_role``.
+    narrate_model = project.manifest.model.for_role("narrate") if narrate else None
 
     estimate = ask_estimate(
-        model, self_repair_attempts=project.manifest.defaults.self_repair_attempts
+        model,
+        self_repair_attempts=project.manifest.defaults.self_repair_attempts,
+        narrate=narrate,
+        narrate_model=narrate_model,
     )
     if dry_run:
         print(f"▸ ask (dry run — no API calls):\n\n{estimate.render()}")
@@ -657,11 +664,24 @@ def _ask(args: list[str]) -> int:
             llm=llm,
             model=model,
             self_repair_attempts=project.manifest.defaults.self_repair_attempts,
+            narrate=narrate,
+            narration_model=narrate_model,
             trace_writer=TraceWriter(paths.traces_dir / "ask.jsonl"),
         )
     cost = _meter(
         project, result.usage, model=model, command="ask", role="agent", run_id=result.trace_id
     )
+    # Meter the narration call apart from the agent spend — its own role and (possibly) model —
+    # so usage.db attributes it distinctly (invariant 5). No-op unless narration actually ran.
+    if result.narration_usage.total_tokens and narrate_model is not None:
+        cost += _meter(
+            project,
+            result.narration_usage,
+            model=narrate_model,
+            command="ask",
+            role="narrate",
+            run_id=result.trace_id,
+        )
 
     print(f"\nplan: {result.plan}")
     print(f"\nsql:\n{result.sql}")
@@ -670,12 +690,14 @@ def _ask(args: list[str]) -> int:
         print("  " + " | ".join(result.columns))
         for row in result.rows[:20]:
             print("  " + " | ".join(str(v) for v in row))
+        if result.answer:
+            print(f"\nanswer: {result.answer}")
         if result.used_assets:
             print(f"\ncited trusted assets: {', '.join(result.used_assets)}")
     else:
         print(f"\n✗ failed after {result.attempts} attempt(s): {result.error}")
     print(
-        f"\nusage: {result.usage.total_tokens} tokens · ${cost:.4f} · "
+        f"\nusage: {result.total_usage.total_tokens} tokens · ${cost:.4f} · "
         f"{result.attempts} attempt(s) · {result.latency_ms:.0f}ms"
     )
     return 0 if result.ok else 1

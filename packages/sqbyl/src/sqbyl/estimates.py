@@ -28,6 +28,7 @@ if TYPE_CHECKING:
 # Rough per-call token sizes by workload. Inputs are dominated by the compiled
 # schema/semantics block; outputs by the structured result the role emits.
 _ASK_IN, _ASK_OUT = 1500, 300
+_NARRATE_IN, _NARRATE_OUT = 800, 120  # question + result table in, a short sentence out
 _SELECT_IN, _SELECT_OUT = 800, 60  # compact table catalog in, a short JSON name list out
 _ANNOTATE_IN, _ANNOTATE_OUT = 1500, 400
 _SYNTH_IN, _SYNTH_OUT = 2000, 2000  # one batch drafting call, large output
@@ -51,21 +52,38 @@ def _count_dev_questions(project: Project) -> int:
     return dev_set_size(project)
 
 
-def ask_estimate(model: str, *, self_repair_attempts: int = 0) -> CostEstimate:
+def ask_estimate(
+    model: str,
+    *,
+    self_repair_attempts: int = 0,
+    narrate: bool = False,
+    narrate_model: str | None = None,
+) -> CostEstimate:
     # A question can retry up to ``self_repair_attempts`` times, each a fresh paid call, so
     # the ceiling is 1 + attempts calls (spec §3 self-repair; metered in pipeline.ask).
     calls = 1 + self_repair_attempts
-    return CostEstimate(
-        items=[
+    items = [
+        EstimateItem(
+            label=f"answer 1 question (≤{calls} calls incl. self-repair)",
+            model=model,
+            calls=calls,
+            avg_input_tokens=_ASK_IN,
+            avg_output_tokens=_ASK_OUT,
+        )
+    ]
+    # Opt-in narration is one more call, on its own (possibly cheaper) model, so it's a
+    # distinct estimate line the up-front quote shows before any spend (invariant 5).
+    if narrate:
+        items.append(
             EstimateItem(
-                label=f"answer 1 question (≤{calls} calls incl. self-repair)",
-                model=model,
-                calls=calls,
-                avg_input_tokens=_ASK_IN,
-                avg_output_tokens=_ASK_OUT,
+                label="narrate the answer (1 call)",
+                model=narrate_model or model,
+                calls=1,
+                avg_input_tokens=_NARRATE_IN,
+                avg_output_tokens=_NARRATE_OUT,
             )
-        ]
-    )
+        )
+    return CostEstimate(items=items)
 
 
 def annotate_estimate(model: str, *, tables: int) -> CostEstimate:

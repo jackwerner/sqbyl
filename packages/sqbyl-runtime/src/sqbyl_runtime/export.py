@@ -44,6 +44,9 @@ def answer_dict(result: AgentResult, *, row_cap: int = _DEFAULT_ROW_CAP) -> dict
         "rows": [[_jsonable(v) for v in row] for row in result.rows[:row_cap]],
         "row_count": len(result.rows),
         "truncated": len(result.rows) > row_cap,
+        # The opt-in plain-English restatement, present only when narration was enabled; the
+        # rows above remain the authoritative answer, this is a convenience over them.
+        "answer": result.answer,
         "used_assets": result.used_assets,
         "error": result.error,
         "trace_id": result.trace_id,

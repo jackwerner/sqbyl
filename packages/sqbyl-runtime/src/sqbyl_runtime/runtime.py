@@ -57,6 +57,8 @@ class Agent:
         model: str,
         release: ReleaseArtifact,
         self_repair_attempts: int = 2,
+        narrate: bool = False,
+        narration_model: str | None = None,
         trace_writer: TraceWriter | None = None,
     ) -> None:
         self.knowledge = knowledge
@@ -65,11 +67,21 @@ class Agent:
         self.model = model
         self.release = release
         self._self_repair_attempts = self_repair_attempts
+        # Default narration posture for this agent (off unless the embedder opted in at load);
+        # a per-call ``ask(..., narrate=...)`` overrides it. ``narration_model`` defaults to the
+        # agent model when unset.
+        self._narrate = narrate
+        self._narration_model = narration_model
         self._trace_writer = trace_writer
 
-    def ask(self, question: str) -> AgentResult:
+    def ask(self, question: str, *, narrate: bool | None = None) -> AgentResult:
         """Answer one question → ``AgentResult`` (plan, sql, rows, used_assets, usage,
-        latency, …). A fresh, stateless pipeline run, identical to dev's."""
+        latency, …). A fresh, stateless pipeline run, identical to dev's.
+
+        ``narrate`` overrides this agent's default for a single call: pass ``True`` to also
+        get a plain-English ``result.answer`` (one extra grounded, separately-metered call),
+        ``False`` to force the deterministic rows-only path, or leave ``None`` to use the
+        default chosen at ``load()``."""
         return ask(
             question,
             knowledge=self.knowledge,
@@ -77,6 +89,8 @@ class Agent:
             llm=self.llm,
             model=self.model,
             self_repair_attempts=self._self_repair_attempts,
+            narrate=self._narrate if narrate is None else narrate,
+            narration_model=self._narration_model,
             trace_writer=self._trace_writer,
         )
 
@@ -101,6 +115,8 @@ def load(
     llm: LLMClient | None = None,
     read_only: bool = True,
     self_repair_attempts: int = 2,
+    narrate: bool = False,
+    narration_model: str | None = None,
     trace_writer: TraceWriter | None = None,
     warn: bool = True,
 ) -> Agent:
@@ -122,6 +138,11 @@ def load(
     that's a data-safety control of a different class (a prod credential that can drop tables),
     always emitted on connect regardless of ``warn``. Silence that one deliberately by opening
     the :class:`Database` yourself (with its own ``warn=``) and passing it in.
+
+    ``narrate=True`` makes every ``agent.ask`` also return a plain-English ``answer`` (one
+    extra grounded, separately-metered summarization call on ``narration_model``, defaulting
+    to ``model``) — off by default so the deterministic, ``$0``-by-default posture is opt-in
+    only. A single call can override the default via ``agent.ask(question, narrate=...)``.
     """
     artifact = _load_release(release)
     knowledge = ProjectKnowledge.from_release(artifact)
@@ -149,6 +170,8 @@ def load(
         model=model,
         release=artifact,
         self_repair_attempts=self_repair_attempts,
+        narrate=narrate,
+        narration_model=narration_model,
         trace_writer=trace_writer,
     )
 

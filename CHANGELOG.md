@@ -11,6 +11,22 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-07
+
+### Added
+
+- **Opt-in natural-language answers on `ask()`.** `ask()` still returns the authoritative
+  `sql`/`columns`/`rows`; now a chat/assistant surface can also get a plain-English sentence
+  without re-implementing the summarization step itself. Enable it at load
+  (`load(..., narrate=True)`), per call (`agent.ask(q, narrate=True)`), or on the CLI
+  (`sqbyl ask "…" --narrate`) and `result.answer` is populated by **one** final call grounded
+  strictly on the executed rows. It's **off by default** so the deterministic, `$0`-by-default
+  runtime is unchanged; the call is estimated up front, traced as its own `narrate` GenAI span,
+  and metered as a distinct `narrate` role/model (`narration_model=` / `model.narrate_model`).
+  The narrated sentence is a convenience over the rows, which remain the source of truth. The
+  release JSON interface (`schema_version`) is unchanged — narration is a load-time injection,
+  not baked into the portable brain.
+
 ## [0.2.1] — 2026-07-07
 
 A follow-up patch to 0.2.0: a missing (not just empty) `benchmarks/test.yaml` was still

@@ -163,6 +163,8 @@ def ask(q: str):
 
 It inherits your app's auth, connection pooling, and observability. `sqbyl run <release>` / `sqbyl serve` exist for non-Python callers and quick HTTP exposure, but are **intentionally not hardened** — don't put `sqbyl serve` on the open internet.
 
+**Natural-language answers (opt-in).** `ask()` returns structured data — `sql`, `columns`, `rows` — which stays the authoritative answer. For a chat/assistant surface that also wants a sentence (*"There are 1,284 orders."*), enable narration: `load(..., narrate=True)` (or per call, `agent.ask(q, narrate=True)`). That adds **one** final summarization call, grounded strictly on the executed rows, and populates `result.answer`. It's **off by default** so the deterministic, `$0`-by-default runtime is unchanged; the call meters as its own `narrate` role (pin a cheaper model with `narration_model=`), and the narrated sentence is a convenience over the rows, never a substitute for them. The CLI mirrors this with `sqbyl ask "…" --narrate`.
+
 ### Async & concurrency
 
 `agent.ask()` is **synchronous and blocking** (an LLM round-trip plus DB queries), but a single loaded `agent` is **safe to call concurrently** — the DB engine pools per-thread connections, the provider client (Anthropic or OpenAI) is thread-safe, and trace writes are locked. So under a threadpool it serves concurrent requests correctly.

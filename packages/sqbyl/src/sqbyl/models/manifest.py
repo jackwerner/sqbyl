@@ -20,6 +20,7 @@ MODEL_ROLES = (
     "synth",
     "coach",
     "judge",
+    "narrate",
 )
 
 
@@ -60,6 +61,7 @@ class ModelConfig(SqbylModel):
     synth_model: str | None = None
     coach_model: str | None = None
     judge_model: str | None = None
+    narrate_model: str | None = None
 
     @model_validator(mode="after")
     def _check_provider(self) -> ModelConfig:
