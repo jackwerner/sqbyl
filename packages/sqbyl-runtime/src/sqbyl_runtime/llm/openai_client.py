@@ -91,6 +91,20 @@ class OpenAILLMClient(LLMClient):
         messages.extend(m.model_dump() for m in request.messages)
         return messages
 
+    def check_auth(self) -> None:
+        """Confirm the key works via a **token-free** models-list call (finding #5).
+
+        Raises ``RuntimeError`` with an actionable message on a missing/invalid key, so
+        ``init`` can fail fast before quoting a plan the user can't run."""
+        client = self._ensure_client()
+        try:
+            client.models.list()
+        except Exception as exc:  # SDK auth/connection errors → one friendly message
+            raise RuntimeError(
+                "OpenAI credential check failed — verify OPENAI_API_KEY (or the api_key in "
+                f"sqbyl.yaml) and network access. Underlying error: {exc}"
+            ) from exc
+
     def complete(self, request: LLMRequest) -> LLMResponse:
         client = self._ensure_client()
         kwargs: dict[str, Any] = {

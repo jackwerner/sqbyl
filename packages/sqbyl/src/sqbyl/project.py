@@ -56,6 +56,7 @@ class Project:
         record: str | Path | None = None,
         as_of: datetime | None = None,
         judge: bool | None = None,
+        override: str | None = None,
         persist: bool = True,
     ) -> ScoredRun:
         """Run the eval harness over a benchmark ``split`` → :class:`ScoredRun` (spec §10).
@@ -67,6 +68,9 @@ class Project:
         ``judge`` forces Layer-2 judging on/off (default follows ``automation.auto_judge``);
         the optimizer passes ``judge=False`` so its many trial evals stay cheap and
         deterministic (the judge is advisory and never moves the headline it optimizes).
+
+        ``override`` redirects every non-pinned role to a single model (``sqbyl init --model``),
+        so the baseline eval spends on the models its estimate quoted (finding #2).
         """
         from sqbyl.eval.report import save_run
         from sqbyl.eval.runner import run_eval
@@ -83,6 +87,7 @@ class Project:
             llm=client,
             as_of=as_of,
             judge=judge,
+            override=override,
             trace_writer=TraceWriter(paths.traces_dir / "eval.jsonl"),
         )
         with UsageStore(paths.usage_db) as store:

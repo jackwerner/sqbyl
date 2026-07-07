@@ -61,6 +61,76 @@ if TYPE_CHECKING:
 # Steps a user can drop with `--select` / the `[s]elect` menu.
 STEPS = ("annotate", "synth", "eval")
 
+# Name of the project manifest `init` scaffolds when it's missing (user journey §1).
+MANIFEST_NAME = "sqbyl.yaml"
+
+
+# ── the scaffold: `init` generates sqbyl.yaml (spec §5.5 / user journey §1 — $0) ──────────
+#
+# The user-journey promise is "there's no config file to hand-write; `init` will generate
+# `sqbyl.yaml` for her". So a missing manifest is the *start* of the guided push, not a
+# traceback (finding #1). These are the UI-agnostic substrate; `cli._init` owns the prompts.
+
+
+def manifest_template() -> str:
+    """A commented, ready-to-fill ``sqbyl.yaml`` for the non-interactive / CI path.
+
+    Written verbatim when ``init`` can't prompt (``--auto`` or no TTY); the user fills the
+    blanks and re-runs. Kept in sync with :class:`~sqbyl.models.SqbylManifest` by hand — the
+    interactive path validates through the model, so a drift here surfaces the moment someone
+    actually runs the templated file."""
+    from sqbyl_runtime.llm.factory import SUPPORTED_PROVIDERS
+    from sqbyl_runtime.models import Dialect
+
+    dialects = ", ".join(d.value for d in Dialect)
+    providers = " or ".join(SUPPORTED_PROVIDERS)
+    return (
+        "# sqbyl.yaml — fill in the blanks below, then re-run `sqbyl init`.\n"
+        "name: my-project\n"
+        "database:\n"
+        f"  # dialect: one of {dialects}\n"
+        "  dialect: postgresql\n"
+        "  # Connection URL. Prefer env: indirection so no secret lives in this file,\n"
+        "  # e.g. env:DATABASE_URL (then `export DATABASE_URL=postgresql://readonly@host/db`).\n"
+        "  url: env:DATABASE_URL\n"
+        "model:\n"
+        f"  # provider: {providers} (one provider powers every role — no mixing).\n"
+        "  provider: anthropic\n"
+        "  # API key via env: indirection, e.g. env:ANTHROPIC_API_KEY or env:OPENAI_API_KEY.\n"
+        "  api_key: env:ANTHROPIC_API_KEY\n"
+    )
+
+
+def build_manifest_yaml(
+    *, name: str, dialect: str, url: str, provider: str, api_key_var: str
+) -> str:
+    """Validate the collected answers into a :class:`SqbylManifest`, then render clean YAML.
+
+    Validating first means a bad dialect/provider/empty-name is a friendly error *here* (at
+    scaffold time), not a pydantic traceback on the next load (invariant 2). ``api_key_var``
+    is wrapped in the ``env:`` indirection unless the user already typed it that way — the key
+    itself never lands in the file (spec §13)."""
+    from sqbyl.models import SqbylManifest
+    from sqbyl.yamlio import dump_yaml
+
+    api_key = api_key_var if api_key_var.startswith("env:") else f"env:{api_key_var}"
+    data: dict[str, object] = {
+        "name": name,
+        "database": {"dialect": dialect, "url": url},
+        "model": {"provider": provider, "api_key": api_key},
+    }
+    SqbylManifest.model_validate(data)  # raises ValueError/ValidationError on bad input
+    return dump_yaml(data)
+
+
+def write_manifest(root: Path, yaml_text: str) -> Path:
+    """Write ``sqbyl.yaml`` under ``root`` (creating ``root`` if needed) → its path."""
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / MANIFEST_NAME
+    path.write_text(yaml_text if yaml_text.endswith("\n") else yaml_text + "\n")
+    return path
+
+
 # Gate signature: (meter, next_step_estimate, human-readable label) -> proceed?
 # The CLI supplies the guided-pause / --auto hard-stop policy; init stays UI-agnostic.
 AuthorizeFn = Callable[[SpendMeter, float, str], bool]
@@ -149,6 +219,10 @@ class InitPlan:
     do_eval: bool
     eval_questions: int
     estimate: CostEstimate
+    # The global ``--model`` override (``None`` when unset). Threaded into every role so the
+    # enrichment spends on the same models the estimate priced against (finding #2) — synth,
+    # judge, and coach included, unless a role is explicitly pinned in ``sqbyl.yaml``.
+    override: str | None = None
 
     @property
     def has_paid_work(self) -> bool:
@@ -258,6 +332,7 @@ def build_plan(
     steps: tuple[str, ...] = STEPS,
     synth_n: int = 20,
     as_of: datetime | None = None,
+    override: str | None = None,
 ) -> InitPlan:
     """Compose the costed plan from what the free pass found and what's already done.
 
@@ -265,6 +340,10 @@ def build_plan(
     annotate line, synth is skipped when a dev set already exists, and the baseline eval is
     skipped when one already ran at the current content hash / schema / ``as_of``. So a
     fully-enriched, unchanged project plans ``$0``.
+
+    ``override`` is the global ``--model`` (``None`` when unset). It priced the synth and
+    judge lines too — via :meth:`ModelConfig.for_role` — so a cheaper-model swap moves the
+    *whole* estimate, not just annotate/eval (finding #2). An explicit per-role pin still wins.
     """
     repairs = project.manifest.defaults.self_repair_attempts
     annotate_paths = tables_needing_annotation(project) if "annotate" in steps else []
@@ -285,10 +364,11 @@ def build_plan(
     if annotate_paths:
         items += annotate_estimate(model, tables=len(annotate_paths)).items
     if do_synth:
-        items += synth_estimate(project.manifest.model.for_role("synth"), n=synth_n).items
+        synth_model = project.manifest.model.for_role("synth", override=override)
+        items += synth_estimate(synth_model, n=synth_n).items
     if do_eval and eval_questions:
         judge = (
-            project.manifest.model.for_role("judge")
+            project.manifest.model.for_role("judge", override=override)
             if project.manifest.automation.auto_judge
             else None
         )
@@ -307,6 +387,7 @@ def build_plan(
         do_eval=do_eval and eval_questions > 0,
         eval_questions=eval_questions,
         estimate=CostEstimate(items=items),
+        override=override,
     )
 
 
@@ -436,11 +517,11 @@ def enrich(
     if plan.do_synth:
         from sqbyl.synth import synthesize
 
-        est = synth_estimate(project.manifest.model.for_role("synth"), n=plan.synth_n).total_usd
+        synth_model = project.manifest.model.for_role("synth", override=plan.override)
+        est = synth_estimate(synth_model, n=plan.synth_n).total_usd
         if not authorize(meter, est, f"synth ~{plan.synth_n} question(s)"):
             result.stopped = True
             return _finish(project, result, meter, annotate_result)
-        synth_model = project.manifest.model.for_role("synth")
         synth = synthesize(
             project,
             llm=llm,
@@ -466,7 +547,9 @@ def enrich(
             return _finish(project, result, meter, annotate_result)
         # Share the one injected client across the whole journey (so it runs end-to-end under
         # a single record-replay cassette); fall back to replay/record when none was injected.
-        run = project.eval("dev", llm=llm, replay=replay, record=record, as_of=as_of)
+        run = project.eval(
+            "dev", llm=llm, replay=replay, record=record, as_of=as_of, override=plan.override
+        )
         result.run = run
         # Stamp what this baseline ran against so an unchanged re-run skips re-evaluating, but
         # a changed schema or a different --as-of forces it.
@@ -475,7 +558,7 @@ def enrich(
         # 4. Coach the failures (if automation is on), so the queue arrives pre-populated.
         if project.manifest.automation.auto_coach:
             result.coach_report = _maybe_coach(
-                project, run, llm=llm, meter=meter, authorize=authorize
+                project, run, llm=llm, meter=meter, authorize=authorize, override=plan.override
             )
 
     return _finish(project, result, meter, annotate_result)
@@ -483,7 +566,9 @@ def enrich(
 
 def _eval_estimate_total(project: Project, plan: InitPlan) -> float:
     judge = (
-        project.manifest.model.for_role("judge") if project.manifest.automation.auto_judge else None
+        project.manifest.model.for_role("judge", override=plan.override)
+        if project.manifest.automation.auto_judge
+        else None
     )
     return eval_estimate(
         plan.model,
@@ -500,6 +585,7 @@ def _maybe_coach(
     llm: LLMClient,
     meter: SpendMeter,
     authorize: AuthorizeFn,
+    override: str | None = None,
 ) -> CoachReport | None:
     from sqbyl.coach import coach, gather_failures, save_report
     from sqbyl.estimates import coach_estimate
@@ -508,7 +594,7 @@ def _maybe_coach(
     failures = gather_failures(run)
     if not failures:
         return None
-    model = project.manifest.model.for_role("coach")
+    model = project.manifest.model.for_role("coach", override=override)
     est = coach_estimate(model, failures=len(failures)).total_usd
     if not authorize(meter, est, f"coach {len(failures)} failure(s)"):
         return None

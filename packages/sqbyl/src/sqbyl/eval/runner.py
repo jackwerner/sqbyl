@@ -201,6 +201,7 @@ def run_eval(
     as_of: datetime | None = None,
     float_tol: float = 1e-6,
     judge: bool | None = None,
+    override: str | None = None,
     trace_writer: TraceWriter | None = None,
 ) -> ScoredRun:
     """Run the eval harness over a benchmark ``split`` of ``project``.
@@ -212,13 +213,16 @@ def run_eval(
     Layer-2 judging (spec §7) follows ``automation.auto_judge`` by default; pass
     ``judge=True``/``False`` to force it on or off (e.g. a ``--no-judge`` run). When on, the
     same ``llm`` runs the judge role at the project's pinned ``judge`` model.
+
+    ``override`` (e.g. ``sqbyl init --model``) redirects every role that isn't explicitly
+    pinned, so the baseline eval spends on the same models its estimate priced (finding #2).
     """
     split = Split(split)
     questions = load_for_eval(project, split)
     knowledge = load_knowledge(project)
     asset_sql = {a.name: a.sql for a in load_trusted_assets(project)}
-    model = project.manifest.model.for_role("agent")
-    selection_model = project.manifest.model.for_role("selection")
+    model = project.manifest.model.for_role("agent", override=override)
+    selection_model = project.manifest.model.for_role("selection", override=override)
     judge_on = project.manifest.automation.auto_judge if judge is None else judge
     with project.connect() as db:
         return score_run(
@@ -234,7 +238,9 @@ def run_eval(
             self_repair_attempts=project.manifest.defaults.self_repair_attempts,
             float_tol=float_tol,
             judge_llm=llm if judge_on else None,
-            judge_model=project.manifest.model.for_role("judge") if judge_on else None,
+            judge_model=(
+                project.manifest.model.for_role("judge", override=override) if judge_on else None
+            ),
             judge_prompts=load_judge_prompts(project) if judge_on else None,
             # Prior human rulings coach the judge (spec §7) — but only on **dev**. The
             # held-out test judge stays pristine (no few-shot) so the measurement instrument

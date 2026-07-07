@@ -15,8 +15,12 @@ from typing import TYPE_CHECKING
 from sqbyl import __version__
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from sqbyl.init import EnrichmentResult, FreePass, InitPlan
+    from sqbyl.models.coach import CoachReport
     from sqbyl.models.optimize import OptimizeResult
+    from sqbyl.models.runs import QuestionResult, ScoredRun
     from sqbyl.project import Project
     from sqbyl_runtime.llm.base import Usage
 
@@ -607,6 +611,79 @@ def _ask(args: list[str]) -> int:
     return 0 if result.ok else 1
 
 
+def _eval_show(args: list[str]) -> int:
+    """`sqbyl eval show <dev|test> <question_id> [DIR]` — one row's full detail ($0).
+
+    Reads the latest persisted run for the split and prints the plan, generated vs gold SQL,
+    each deterministic scorer's pass/fail + detail, and each judge's verdict + rationale — the
+    same evidence the review console shows, but for headless/terminal use (finding #6). Reads
+    only already-saved ``.sqbyl/runs/*.json``; spends nothing and opens no DB."""
+    from sqbyl.eval.benchmarks_io import Split
+    from sqbyl.eval.report import latest_run
+    from sqbyl.project import Project
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    positional = _positionals(args)
+    if len(positional) < 2:
+        print("usage: sqbyl eval show <dev|test> <question_id> [DIR]")
+        return 2
+    split_arg, qid = positional[0], positional[1]
+    try:
+        split = Split(split_arg)
+    except ValueError:
+        print(f"unknown split {split_arg!r}; expected 'dev' or 'test'")
+        return 2
+    project = Project.load(positional[2] if len(positional) > 2 else ".")
+    run = latest_run(SqbylPaths(project.root), split=split.value)
+    if run is None:
+        print(f"no {split.value} run yet — run `sqbyl eval {split.value}` first")
+        return 1
+    row = next((r for r in run.results if r.id == qid), None)
+    if row is None:
+        ids = ", ".join(r.id for r in run.results) or "(none)"
+        print(
+            f"no question {qid!r} in the latest {split.value} run ({run.run_id[:8]}) — ids: {ids}"
+        )
+        return 1
+    _print_eval_row(run, row)
+    return 0
+
+
+def _print_eval_row(run: ScoredRun, row: QuestionResult) -> None:
+    """Pretty-print a single scored row: plan, SQL, deterministic scorers, and judge panel."""
+
+    def _block(sql: str) -> str:
+        return "\n".join(f"      {line}" for line in sql.splitlines()) or "      (none)"
+
+    print(f"▸ {run.split} run {run.run_id[:8]} · question {row.id}  ($0 — from a saved run)")
+    print(f"\n  question: {row.question}")
+    print(f"  verdict:  {row.verdict.value}")
+    if row.human_verdict is not None:
+        print(f"  human:    {row.human_verdict.value}")
+    if row.judge_suggestion is not None:
+        print(f"  judge:    suggests {row.judge_suggestion.value}")
+    if row.plan:
+        print(f"\n  plan:\n      {row.plan}")
+    print(f"\n  generated SQL:\n{_block(row.generated_sql or '')}")
+    if row.gold_sql:
+        print(f"\n  gold SQL:\n{_block(row.gold_sql)}")
+    if row.gold_asset:
+        print(f"\n  gold asset: {row.gold_asset}")
+    if row.error:
+        print(f"\n  error: {row.error}")
+    if row.scorers:
+        print("\n  scorers:")
+        for s in row.scorers:
+            mark = "✓" if s.passed else "·" if s.passed is None else "✗"
+            detail = f" — {s.detail}" if s.detail else ""
+            print(f"    {mark} {s.name}{detail}")
+    if row.judge_verdicts:
+        print("\n  judge panel (advisory — never moves the deterministic score):")
+        for j in row.judge_verdicts:
+            call = "pass" if j.passed else "fail"
+            print(f"    · {j.judge}: {call} ({j.confidence:.0%}) — {j.rationale}")
+
+
 def _eval(args: list[str]) -> int:
     """`sqbyl eval [dev|test] [DIR] [--replay P] [--record P] [--as-of ISO]`.
 
@@ -616,7 +693,12 @@ def _eval(args: list[str]) -> int:
     the flipped-questions diff (regression detection, spec §7). Dev and test are always
     reported separately. ``--as-of`` pins the clock for ``now()``-relative gold so runs
     are reproducible across time.
+
+    ``sqbyl eval show <split> <id>`` prints one saved row's full detail ($0) — see
+    :func:`_eval_show`.
     """
+    if args and args[0] == "show":
+        return _eval_show(args[1:])
     from datetime import datetime
 
     from sqbyl.estimates import eval_estimate
@@ -658,7 +740,17 @@ def _eval(args: list[str]) -> int:
     model = project.manifest.model.for_role("agent")
     questions = load_for_eval(project, split)
     if not questions:
-        print(f"benchmarks/{split.value}.yaml has no questions — run `sqbyl synth` first")
+        # The hint must differ by split: `synth` only ever writes dev; the held-out test set
+        # is architecturally hand-authored (invariant 3), so pointing a test user at `synth`
+        # is categorically wrong (finding #8).
+        if split is Split.test:
+            print(
+                "benchmarks/test.yaml has no questions — this is the held-out set and must be "
+                "hand-authored (never synthesized, invariant 3); add questions directly to "
+                "benchmarks/test.yaml"
+            )
+        else:
+            print("benchmarks/dev.yaml has no questions — run `sqbyl synth` first")
         return 1
 
     paths = SqbylPaths(project.root)
@@ -883,16 +975,19 @@ def _synth(args: list[str]) -> int:
 
 
 def _coach(args: list[str]) -> int:
-    """`sqbyl coach [DIR] [--budget $N] [--replay P] [--record P] [--model M]`.
+    """`sqbyl coach [DIR] [--budget $N] [--replay P] [--record P] [--model M] [--regenerate]`.
 
     The headline loop (spec §8): read the latest **dev** eval run's failures and propose a
     ranked list of applyable file diffs — the minimal, highest-leverage edit at the right
     layer (examples > semantics > prose). One paid call; proposals are saved so
     ``sqbyl coach apply N`` can write them. The Coach never sees ``test.yaml``.
+
+    If a report for the current dev run already exists (``init`` coached it, or a prior run
+    did), it's shown for **$0** instead of re-spending; ``--regenerate`` forces a fresh call.
     """
     if args and args[0] == "apply":
         return _coach_apply(args[1:])
-    from sqbyl.coach import coach, gather_failures, save_report
+    from sqbyl.coach import coach, gather_failures, latest_report, save_report
     from sqbyl.estimates import coach_estimate
     from sqbyl.eval.report import latest_run
     from sqbyl.llm import build_llm_client
@@ -904,11 +999,13 @@ def _coach(args: list[str]) -> int:
     if budget_parse is None:
         return 2
     budget, auto, dry_run = budget_parse
+    regenerate = "--regenerate" in args
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
     consumed = {replay, record, model_opt}
     positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
-    model = model_opt or project.manifest.model.for_role("coach")
+    # `--model` redirects the coach role, but an explicit `coach_model` pin in sqbyl.yaml wins.
+    model = project.manifest.model.for_role("coach", override=model_opt)
 
     paths = SqbylPaths(project.root)
     run = latest_run(paths, split="dev")
@@ -924,6 +1021,17 @@ def _coach(args: list[str]) -> int:
         return 1
     if not failures:
         print(f"dev run {run.run_id[:8]} is clean ({run.n_correct}/{run.total}) — nothing to coach")
+        return 0
+
+    # Reuse an existing report for this exact dev run instead of paying again (finding #7):
+    # `init` already coached it, or a prior `sqbyl coach` did. `--regenerate` forces a re-spend.
+    existing = latest_report(paths)
+    if existing is not None and existing.run_id == run.run_id and not regenerate:
+        print(
+            f"▸ a coach report for dev run {run.run_id[:8]} already exists (from init or a prior "
+            "run) — showing it ($0). Re-run with --regenerate to spend on a fresh one."
+        )
+        _print_coach_report(existing)
         return 0
 
     estimate = coach_estimate(model, failures=len(failures))
@@ -963,11 +1071,23 @@ def _coach(args: list[str]) -> int:
     # failure (the agent's SQL could be equivalent), so surface it rather than implying every
     # coached row is a real bug (spec §7 — a mismatch is not proof of incorrectness).
     unresolved = sum(1 for r in failures if r.needs_review and r.human_verdict is None)
+    _print_coach_report(report, spent=spent, unresolved=unresolved)
+    return 0
+
+
+def _print_coach_report(
+    report: CoachReport, *, spent: float | None = None, unresolved: int = 0
+) -> None:
+    """Render a Coach report to the terminal — the ranked proposals with their diffs and the
+    overfitting caveat. Shared by ``sqbyl coach`` (freshly generated), the ``--regenerate``-
+    guarded reuse path, and ``init``'s arrival summary (findings #7a/#7b), so all three show a
+    report identically. ``spent`` prints the paid cost when there was one; ``unresolved`` (only
+    available on the fresh path, which still holds the failure rows) annotates the header."""
     noise = f" · {unresolved} unresolved mismatch(es) — may be false failures" if unresolved else ""
+    spend = f" · ${spent:.4f}" if spent is not None else ""
     print(
         f"\nsqbyl Coach — {report.n_failures} failing{noise} · {report.n_proposals} proposal(s) · "
-        f"predicts ~{report.total_predicted_fixes} fix(es) (model estimate, unverified) · "
-        f"${spent:.4f}\n"
+        f"predicts ~{report.total_predicted_fixes} fix(es) (model estimate, unverified){spend}\n"
     )
     for i, p in enumerate(report.proposals, start=1):
         flag = (
@@ -975,6 +1095,8 @@ def _coach(args: list[str]) -> int:
             if p.is_prose
             else "  ⚠ single-question example — memorization risk"
             if p.memorization_risk
+            else "  ⚠ prose-only/unresolved — nothing to apply"
+            if not p.edits
             else ""
         )
         print(f"[{i}] {p.title}   → {p.target_file}{flag}")
@@ -996,7 +1118,6 @@ def _coach(args: list[str]) -> int:
         "`sqbyl eval test` and watch the dev↔test gap.\n"
         "apply with: sqbyl coach apply N [M ...]"
     )
-    return 0
 
 
 def _coach_apply(args: list[str]) -> int:
@@ -1164,6 +1285,64 @@ def _annotate(args: list[str]) -> int:
     return 0
 
 
+def _scaffold_or_load(target_dir: str, *, auto: bool) -> Project | None:
+    """Load the project, or scaffold a missing ``sqbyl.yaml`` first (finding #1).
+
+    The user-journey promise is that ``init`` generates the manifest — a missing file is the
+    start of the guided push, not a traceback. Interactive TTY → walk through the manifest and
+    continue; non-interactive (``--auto`` or a piped stdin) → write a ready-to-fill template
+    and return ``None`` so ``init`` exits cleanly for the user to fill in and re-run."""
+    from pathlib import Path
+
+    from sqbyl import init as initmod
+    from sqbyl.project import Project
+
+    root = Path(target_dir)
+    if (root / initmod.MANIFEST_NAME).exists():
+        return Project.load(root)
+
+    if not (sys.stdin.isatty() and not auto):
+        path = initmod.write_manifest(root, initmod.manifest_template())
+        print(
+            f"▸ no {initmod.MANIFEST_NAME} here — wrote a template to {path}.\n"
+            "  Fill in the database url + provider/api-key env vars, then re-run `sqbyl init`."
+        )
+        return None
+    return _scaffold_interactive(root)
+
+
+def _scaffold_interactive(root: object) -> Project | None:
+    """Prompt through a fresh ``sqbyl.yaml`` ($0), then load it. ``root`` is a ``Path``."""
+    from pathlib import Path
+
+    from sqbyl import init as initmod
+    from sqbyl.project import Project
+    from sqbyl_runtime.llm.factory import SUPPORTED_PROVIDERS
+    from sqbyl_runtime.models import Dialect
+
+    assert isinstance(root, Path)
+    print(f"▸ no {initmod.MANIFEST_NAME} yet — let's create one ($0).")
+    name = input("  project name: ").strip() or root.resolve().name
+    dialects = ", ".join(d.value for d in Dialect)
+    dialect = input(f"  database dialect [{dialects}] (postgresql): ").strip() or "postgresql"
+    print("    tip: prefer env: indirection so no secret lands in sqbyl.yaml")
+    url = input("  database url (e.g. env:DATABASE_URL): ").strip() or "env:DATABASE_URL"
+    providers = ", ".join(SUPPORTED_PROVIDERS)
+    provider = input(f"  llm provider [{providers}] (anthropic): ").strip() or "anthropic"
+    default_key = "OPENAI_API_KEY" if provider == "openai" else "ANTHROPIC_API_KEY"
+    api_key_var = input(f"  API key env var ({default_key}): ").strip() or default_key
+    try:
+        yaml_text = initmod.build_manifest_yaml(
+            name=name, dialect=dialect, url=url, provider=provider, api_key_var=api_key_var
+        )
+    except Exception as exc:
+        print(f"  ✗ couldn't build a valid {initmod.MANIFEST_NAME}: {exc}")
+        return None
+    path = initmod.write_manifest(root, yaml_text)
+    print(f"  ✓ wrote {path}\n")
+    return Project.load(root)
+
+
 def _init(args: list[str]) -> int:
     """`sqbyl init [DIR] [--auto --budget $N] [--dry-run] [--model M] [--select STEPS] [--n N]`.
 
@@ -1178,7 +1357,6 @@ def _init(args: list[str]) -> int:
     from sqbyl import init as initmod
     from sqbyl.llm import build_llm_client
     from sqbyl.orchestrator import Orchestrator
-    from sqbyl.project import Project
     from sqbyl_runtime.cost import SpendMeter
     from sqbyl_runtime.state.layout import SqbylPaths
     from sqbyl_runtime.state.usage import UsageStore
@@ -1192,7 +1370,10 @@ def _init(args: list[str]) -> int:
     n_opt, as_of_opt = _opt(args, "n"), _opt(args, "as-of")
     consumed = {replay, record, model_opt, select_opt, n_opt, as_of_opt}
     positional = _positionals(args, consumed)
-    project = Project.load(positional[0] if positional else ".")
+    loaded = _scaffold_or_load(positional[0] if positional else ".", auto=auto)
+    if loaded is None:
+        return 1  # a template was written for a missing sqbyl.yaml — fill it in and re-run
+    project = loaded
 
     try:
         as_of = datetime.fromisoformat(as_of_opt) if as_of_opt else None
@@ -1214,7 +1395,9 @@ def _init(args: list[str]) -> int:
         f"{free.joins} join candidate(s) ({free.ambiguous_joins} ambiguous)"
     )
 
-    plan = initmod.build_plan(project, free, model=model, steps=steps, synth_n=synth_n, as_of=as_of)
+    plan = initmod.build_plan(
+        project, free, model=model, steps=steps, synth_n=synth_n, as_of=as_of, override=model_opt
+    )
     if not plan.has_paid_work:
         print("  ✓ nothing to enrich — the project is already up to date ($0)")
         return 0
@@ -1226,9 +1409,22 @@ def _init(args: list[str]) -> int:
         print("\n(dry run — no API calls made)")
         return 0
 
+    # $0 credential preflight (finding #5): the free pass already opened the DB (and warned if
+    # the credential can write); now confirm the LLM key works — via a token-free models-list —
+    # BEFORE the user approves any spend, so a bad/expired key fails here rather than partway
+    # through paid enrichment. A no-op under record-replay, so CI never spends (invariant 4).
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    try:
+        llm.check_auth()
+    except Exception as exc:
+        print(f"  ✗ {exc}")
+        return 1
+
     # ── Confirm (guided prompts; --auto proceeds headless within its required budget) ──
     if not auto:
-        confirmed = _confirm_init_plan(project, free, plan, synth_n=synth_n, steps=steps)
+        confirmed = _confirm_init_plan(
+            project, free, plan, synth_n=synth_n, steps=steps, as_of=as_of
+        )
         if confirmed is None:
             print("  aborted — nothing spent")
             return 0
@@ -1240,7 +1436,6 @@ def _init(args: list[str]) -> int:
     # ── Phase 2: orchestrated enrichment, live-metered ──
     print("\n▸ enriching (metering live)…")
     paths = SqbylPaths(project.root).ensure()
-    llm = build_llm_client(project.manifest, replay=replay, record=record)
     with UsageStore(paths.usage_db) as store:
         meter = SpendMeter(budget=budget, store=store, command="init")
         result = initmod.enrich(
@@ -1265,6 +1460,7 @@ def _confirm_init_plan(
     *,
     synth_n: int,
     steps: tuple[str, ...],
+    as_of: datetime | None = None,
 ) -> InitPlan | None:
     """The guided ``[Y]es / [s]elect steps / [m]odel / [n]o`` menu (spec §5.5). None = bail."""
     from sqbyl import init as initmod
@@ -1283,8 +1479,16 @@ def _confirm_init_plan(
         if choice.startswith("m"):
             new_model = input("    model id (e.g. claude-haiku-4-5-20251001): ").strip()
             if new_model:
+                # `new_model` is a GLOBAL override, so synth/judge/coach reprice too, not just
+                # annotate/eval (finding #2) — an explicit per-role pin still wins.
                 current = initmod.build_plan(
-                    project, free, model=new_model, steps=steps, synth_n=synth_n
+                    project,
+                    free,
+                    model=new_model,
+                    steps=steps,
+                    synth_n=synth_n,
+                    as_of=as_of,
+                    override=new_model,
                 )
                 print(f"\n  Re-estimated on {new_model}:\n")
                 print(current.estimate.render(indent="    "))
@@ -1292,7 +1496,13 @@ def _confirm_init_plan(
             picked = input(f"    steps to keep ({','.join(initmod.STEPS)}): ").strip()
             kept = tuple(s.strip() for s in picked.split(",") if s.strip() in initmod.STEPS)
             current = initmod.build_plan(
-                project, free, model=current.model, steps=kept or (), synth_n=synth_n
+                project,
+                free,
+                model=current.model,
+                steps=kept or (),
+                synth_n=synth_n,
+                as_of=as_of,
+                override=current.override,
             )
             print(f"\n  Plan for [{', '.join(kept) or 'none'}]:\n")
             print(current.estimate.render(indent="    "))
@@ -1341,6 +1551,14 @@ def _report_init_arrival(result: EnrichmentResult) -> int:
                 "(uncalibrated threshold; undo any in `sqbyl review`)"
             )
         print(f"  {len(queue.queue)} decision(s) need you → run `sqbyl review`")
+
+    # `init` (with auto_coach) already paid for a Coach report — show its proposals inline
+    # rather than leaving them buried in .sqbyl/coach/*.json (finding #7a). `sqbyl coach` will
+    # reuse this same report for $0 (finding #7b).
+    report = result.coach_report
+    if report is not None and report.proposals:
+        print(f"\n  the Coach already diagnosed the {report.n_failures} failing row(s):")
+        _print_coach_report(report)
     return 0
 
 
