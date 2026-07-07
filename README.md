@@ -109,7 +109,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export DATABASE_URL=postgresql://readonly_user@warehouse.internal/analytics   # use a read-only role
 ```
 
-Then run the guided setup. It does the free, deterministic work first (connect, read schema, profile every column with read-only SQL), shows you a **costed plan**, and only spends after you confirm:
+Then run the guided setup. No `sqbyl.yaml` to hand-write — `init` scaffolds it for you if it's missing. It does the free, deterministic work first (connect, read schema, profile every column with read-only SQL), verifies your provider key ($0), shows you a **costed plan**, and only spends after you confirm:
 
 ```bash
 sqbyl init
@@ -211,11 +211,13 @@ The dev/test split is load-bearing: optimizing and measuring on the same set is 
 
 ```
 sqbyl init [<db-url>]     # guided: free profile → costed plan → confirm → step through
-                          #   (--auto --budget $5 for CI; --dry-run to estimate only)
+                          #   scaffolds sqbyl.yaml if missing; --auto --budget $5 for CI;
+                          #   --dry-run to estimate only; --model M reprices every role
 sqbyl review              # attention queue + golden-set / judge / proposal review (web UI)
 sqbyl eval [dev|test]     # run the eval harness → scored report + run diff
+sqbyl eval show <split> <id>   # print one saved row's full detail (plan/SQL/scorers/judges), $0
 sqbyl synth [--n 40]      # execution-grounded candidate questions → dev set
-sqbyl coach [apply N...]  # review / apply pre-computed context edits (dev only)
+sqbyl coach [apply N... | --regenerate]   # review/apply context edits; reuses the last report ($0)
 sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop on dev
 sqbyl ask "..."           # one-shot NL→SQL→result
 sqbyl release create --tag v1             # bless current version → portable JSON
@@ -223,7 +225,9 @@ sqbyl cost <command>      # estimate $ / tokens, spend nothing
 sqbyl reset [--all]       # clear local .sqbyl/ state (keeps cost history unless --all)
 ```
 
-Per-step à-la-carte commands (`introspect`, `profile`, `annotate`, `judge`, `runs`, `serve`, `run`) are documented in [the spec, §10](docs/sqbyl-design-spec.md).
+`sqbyl init` scaffolds `sqbyl.yaml` for you when there isn't one (interactively, or a template under `--auto`), and runs a `$0` credential check before quoting a plan.
+
+Per-step à-la-carte commands (`introspect` — with `--sync` to add new DB columns without losing annotations — `profile`, `annotate`, `judge`, `runs`, `serve`, `run`) are documented in [the spec, §10](docs/sqbyl-design-spec.md).
 
 ---
 

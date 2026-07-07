@@ -35,9 +35,11 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export DATABASE_URL=postgresql://readonly_user@warehouse.internal/analytics   # read-only role
 ```
 
-Then run the guided setup. It does the free, deterministic work first (connect, read
-schema, profile every column with read-only SQL), shows you a **costed plan**, and only
-spends after you confirm:
+Then run the guided setup. There's **no config file to hand-write** — if `sqbyl.yaml` is
+missing, `init` walks you through creating it (name, dialect, connection URL, provider,
+API-key env var). It then does the free, deterministic work first (connect, read schema,
+profile every column with read-only SQL), checks your provider key works (a `$0`, token-free
+call), shows you a **costed plan**, and only spends after you confirm:
 
 ```bash
 sqbyl init
