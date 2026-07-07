@@ -7,6 +7,8 @@ manifest (`model.base_url`, plain or `env:`) and on the runtime `load()`.
 
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import pytest
 
 from sqbyl.llm import build_llm_client
@@ -26,12 +28,16 @@ def _manifest(base_url: str | None = None) -> SqbylManifest:
 def test_client_passes_base_url_to_the_sdk() -> None:
     client = AnthropicLLMClient(api_key="sk-test", base_url="https://gateway.example/v1")
     sdk = client._ensure_client()  # constructing the SDK does not open a connection
-    assert str(sdk.base_url).startswith("https://gateway.example")
+    # Assert the exact host, not a substring/prefix (an "https://gateway.example" prefix
+    # check would also pass "https://gateway.example.evil.com").
+    assert urlsplit(str(sdk.base_url)).hostname == "gateway.example"
 
 
 def test_client_without_base_url_uses_the_anthropic_default() -> None:
     sdk = AnthropicLLMClient(api_key="sk-test")._ensure_client()
-    assert "anthropic.com" in str(sdk.base_url)
+    # Exact host match — an `"anthropic.com" in url` check would also accept a hostile
+    # `https://anthropic.com.evil.com`.
+    assert urlsplit(str(sdk.base_url)).hostname == "api.anthropic.com"
 
 
 def test_build_llm_client_threads_a_plain_base_url() -> None:
