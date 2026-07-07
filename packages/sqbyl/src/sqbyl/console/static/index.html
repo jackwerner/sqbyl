@@ -16,6 +16,9 @@
   .tab.active { color: inherit; background: #8881; font-weight: 600; }
   .counts { color: var(--dim); font-size: .85rem; }
   .card { border: 1px solid var(--line); border-radius: 10px; padding: 1rem 1.15rem; }
+  .card.reviewed { opacity: .72; }
+  .done { border: 1px solid var(--ok); border-radius: 10px; color: var(--ok);
+          padding: .7rem 1rem; margin-bottom: .8rem; font-weight: 600; }
   .q { font-size: 1.15rem; font-weight: 600; margin: 0 0 .35rem; }
   .meta { color: var(--dim); font-size: .8rem; margin-bottom: .75rem; }
   .badge { display: inline-block; border: 1px solid var(--line); border-radius: 999px;
@@ -352,8 +355,15 @@ function renderReview() {
   const resolved = r.reviewed
     ? `<span class="badge ${r.human_verdict === "correct" ? "ok" : r.human_verdict === "incorrect" ? "bad" : ""}">you: ${esc(r.human_verdict)}</span>`
     : "";
-  main.innerHTML = `
-    <div class="card">
+  // Positive "you're done" signal once every row in the pile is resolved — the just-resolved
+  // card stays below (dimmed) so a call can still be revisited/changed (finding #10).
+  const allReviewed = reviewRows.every((x) => x.reviewed);
+  const doneBanner = allReviewed
+    ? `<div class="done">✓ All ${reviewRows.length} row(s) reviewed — nothing left in the pile. 🎉
+        <span class="rationale">You can still arrow back to revisit or change any call.</span></div>`
+    : "";
+  main.innerHTML = doneBanner + `
+    <div class="card${r.reviewed ? " reviewed" : ""}">
       <p class="q">${esc(r.question)}</p>
       <div class="meta">${reviewIdx + 1} / ${reviewRows.length} · <code>${esc(r.id)}</code>
         <span class="badge">judge: ${sugLabel}</span> ${resolved}</div>
@@ -385,9 +395,12 @@ async function resolve(verdict) {
   reviewRows[reviewIdx] = res.row;
   const agreed = r.judge_suggestion && verdict === r.judge_suggestion;
   toast(`resolved ${verdict}${r.judge_suggestion ? (agreed ? " · agreed with judge" : " · overrode judge") : ""}`);
-  // Advance to the next still-unreviewed row.
-  const next = reviewRows.findIndex((x, i) => i > reviewIdx && !x.reviewed);
-  reviewIdx = next === -1 ? reviewIdx : next;
+  // Advance to the next still-unreviewed row: prefer one after the current, else wrap to the
+  // first open row anywhere. If none remain open, stay put — renderReview() shows the "pile
+  // complete" banner so finishing the last row reads as done, not ignored (finding #10).
+  let next = reviewRows.findIndex((x, i) => i > reviewIdx && !x.reviewed);
+  if (next === -1) next = reviewRows.findIndex((x) => !x.reviewed);
+  if (next !== -1) reviewIdx = next;
   renderReview();
 }
 

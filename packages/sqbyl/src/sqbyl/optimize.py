@@ -146,28 +146,39 @@ def _run(
             except ApplyError:
                 continue
             tried += 1
-            trial = _eval_dev(project, llm, as_of=as_of, persist=False)
-            spent += trial.total_cost_usd
-            fixed, broke = _paired_delta(best, trial)
-            if fixed - broke >= min_gain:  # keep-if-it-helped (net questions past the floor)
-                _save(paths, trial)
-                best = trial
-                kept += 1
-                frontier.append(
-                    FrontierPoint.from_run(
-                        trial,
-                        version=len(frontier),
-                        net_gain=fixed - broke,
-                        significant=paired_improvement_significant(fixed, broke),
-                        proposal_title=proposal.title,
-                        proposal_id=proposal.id,
-                        target_file=proposal.target_file,
-                        layer=proposal.layer.value,
+            # Once the edit is on disk, ANY exception before the keep/revert decision (e.g. a
+            # trial eval that can't reload the just-edited file) must still roll the file back —
+            # otherwise a crash leaves a mutated project with no revert path, which is not
+            # guaranteed to be a git repo (finding #11). So the snapshot restore lives in a
+            # finally, gated on whether the edit was kept, and any unexpected error propagates
+            # only AFTER the file is restored.
+            kept_this = False
+            try:
+                trial = _eval_dev(project, llm, as_of=as_of, persist=False)
+                spent += trial.total_cost_usd
+                fixed, broke = _paired_delta(best, trial)
+                if fixed - broke >= min_gain:  # keep-if-it-helped (net questions past the floor)
+                    _save(paths, trial)
+                    best = trial
+                    kept += 1
+                    frontier.append(
+                        FrontierPoint.from_run(
+                            trial,
+                            version=len(frontier),
+                            net_gain=fixed - broke,
+                            significant=paired_improvement_significant(fixed, broke),
+                            proposal_title=proposal.title,
+                            proposal_id=proposal.id,
+                            target_file=proposal.target_file,
+                            layer=proposal.layer.value,
+                        )
                     )
-                )
-                accepted = True
+                    accepted = kept_this = True
+            finally:
+                if not kept_this:
+                    _restore(snapshot)  # revert-if-not (or on any error): files as they were
+            if accepted:
                 break
-            _restore(snapshot)  # revert-if-not: leave the files exactly as they were
             reverted += 1
 
         rounds += 1

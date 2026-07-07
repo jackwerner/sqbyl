@@ -46,6 +46,7 @@ from sqbyl.models import (
 )
 from sqbyl.project import Project
 from sqbyl.synth import check_gold_sql
+from sqbyl_runtime.models import Dialect
 from sqbyl_runtime.state.layout import SqbylPaths
 
 _STATIC = Path(__file__).resolve().parent / "static"
@@ -81,6 +82,41 @@ class Resolve(BaseModel):
 def _apply_edit(candidate: Candidate, edit: Edit) -> Candidate:
     updates = {k: v for k, v in edit.model_dump().items() if v is not None}
     return candidate.model_copy(update=updates) if updates else candidate
+
+
+def _reground_sql(
+    project: Project, sql: str, *, dialect: Dialect
+) -> tuple[ExecutionEvidence | None, dict[str, object] | None]:
+    """Execute ``sql`` read-only to (re)ground it, returning ``(evidence, error)`` with exactly
+    one non-``None`` (spec §6.A).
+
+    Opening the DB per request can fail for reasons the reviewer can fix from the shell —
+    ``DATABASE_URL`` unset, the DB restarted, a rotated credential, a network blip — so a
+    connection failure is translated into a typed ``{"ok": False, "reason": "db_error", ...}``
+    result (finding #9), the same shape the console already returns for a bad edit, rather than
+    propagating as an unhandled 500 the browser can't explain.
+
+    The client gets an actionable-but-generic message (it points at the fix without piping the
+    raw exception — which can carry the connection string / host — into the HTTP response); the
+    full error is printed to the console's own stdout for the local operator to read."""
+    try:
+        with project.connect() as db:
+            evidence, reason, detail = check_gold_sql(db, sql, dialect=dialect)
+    except Exception as exc:  # connection: env unset / DB down / credential rotated / network
+        # Log the real cause where the operator launched `sqbyl review`; keep it out of the
+        # response body so a proxied/shared console can't leak connection internals.
+        print(f"[sqbyl review] database connection failed: {exc!r}")
+        return None, {
+            "ok": False,
+            "reason": "db_error",
+            "detail": (
+                "could not reach the database — check the connection (e.g. DATABASE_URL) and "
+                "that it's running, then reload. See the `sqbyl review` terminal for details."
+            ),
+        }
+    if evidence is None:
+        return None, {"ok": False, "reason": reason.value if reason else "error", "detail": detail}
+    return evidence, None
 
 
 def _review_row(r: QuestionResult) -> dict[str, object]:
@@ -226,10 +262,10 @@ def create_app(project: Project) -> FastAPI:
         # Edit-and-re-run-live: execute the edited SQL and report rows or the error, so a
         # reviewer can verify a fix before accepting. Read-only; nothing is written.
         _require(project, candidate_id)
-        with project.connect() as db:
-            evidence, reason, detail = check_gold_sql(db, req.gold_sql, dialect=dialect)
-        if evidence is None:
-            return {"ok": False, "reason": reason.value if reason else "error", "detail": detail}
+        evidence, err = _reground_sql(project, req.gold_sql, dialect=dialect)
+        if err is not None:
+            return err
+        assert evidence is not None
         return {"ok": True, "evidence": evidence.model_dump(mode="json")}
 
     @app.post("/api/candidates/{candidate_id}/accept")
@@ -241,10 +277,10 @@ def create_app(project: Project) -> FastAPI:
         # since-changed database) could make it error / go empty / degenerate, so we execute
         # it fresh and refuse the accept if it no longer produces a real answer. This also
         # refreshes the stored evidence to exactly what ran.
-        with project.connect() as db:
-            evidence, reason, detail = check_gold_sql(db, edited.gold_sql, dialect=dialect)
-        if evidence is None:
-            return {"ok": False, "reason": reason.value if reason else "error", "detail": detail}
+        evidence, err = _reground_sql(project, edited.gold_sql, dialect=dialect)
+        if err is not None:
+            return err
+        assert evidence is not None
         edited = edited.model_copy(update={"evidence": evidence})
         added = append_to_dev_set(project, [edited.to_question()])
         accepted = edited.model_copy(update={"status": CandidateStatus.accepted})

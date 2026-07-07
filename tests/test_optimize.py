@@ -147,6 +147,31 @@ def test_optimize_reverts_an_edit_that_does_not_help(broken: Project) -> None:
     assert not (broken.root / "examples" / "learned.yaml").exists()
 
 
+def test_optimize_reverts_the_file_when_a_trial_eval_crashes(
+    broken: Project, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # An UNEXPECTED failure after the edit lands (here a trial eval that can't reload the file)
+    # must still roll the file back before propagating — a crash must never leave a mutated,
+    # un-reverted project, git repo or not (finding #11).
+    from sqbyl import optimize as optmod
+
+    real, calls = optmod._eval_dev, {"n": 0}
+
+    def flaky(*a: object, **k: object) -> object:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(*a, **k)  # the baseline eval runs normally
+        raise RuntimeError("boom while reloading the just-edited file")
+
+    monkeypatch.setattr(optmod, "_eval_dev", flaky)
+    llm = MockLLMClient([_agent(_CUSTOMERS), _coach_proposal(), _agent(_ORDERS)])
+    learned = broken.root / "examples" / "learned.yaml"
+
+    with pytest.raises(RuntimeError, match="boom"):
+        optimize(broken, llm=llm, target=0.9, budget=10.0)
+    assert not learned.exists()  # the applied edit was rolled back despite the crash
+
+
 # ── budget: the loop hard-stops before a step it can't afford ─────────────────────────────
 
 

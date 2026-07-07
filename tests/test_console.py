@@ -157,6 +157,36 @@ def test_rerun_executes_edited_sql_live(client: TestClient) -> None:
     assert bad["reason"] == "syntax_error"
 
 
+def test_accept_returns_clean_db_error_when_db_unreachable(
+    project: Project, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A per-request connection failure (env unset here; also a restarted DB / rotated
+    # credential / network blip) must come back as a typed db_error, not a bare 500 the
+    # browser can't explain (finding #9).
+    before = {q.id for q in load_dev_set(project)}
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    resp = client.post("/api/candidates/q_cust_count/accept", json={})
+    assert resp.status_code == 200  # not an unhandled 500
+    body = resp.json()
+    assert body["ok"] is False and body["reason"] == "db_error"
+    assert "database" in body["detail"].lower()
+    assert {q.id for q in load_dev_set(project)} == before  # nothing admitted
+    assert client.get("/api/candidates").json()["counts"]["pending"] == 2  # still pending
+
+
+def test_rerun_returns_clean_db_error_when_db_unreachable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    resp = client.post(
+        "/api/candidates/q_cust_count/rerun",
+        json={"gold_sql": "SELECT COUNT(*) FROM analytics.customers"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is False and body["reason"] == "db_error"
+
+
 def test_unknown_candidate_is_404(client: TestClient) -> None:
     assert client.post("/api/candidates/nope/accept", json={}).status_code == 404
     assert client.post("/api/candidates/nope/reject", json={}).status_code == 404

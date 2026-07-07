@@ -2143,7 +2143,7 @@ wheels = [
 
 [[package]]
 name = "sqbyl"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/sqbyl" }
 dependencies = [
     { name = "fastapi" },
@@ -2175,7 +2175,7 @@ provides-extras = ["anthropic", "openai"]
 
 [[package]]
 name = "sqbyl-runtime"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/sqbyl-runtime" }
 dependencies = [
     { name = "duckdb" },

@@ -33,8 +33,9 @@ from sqbyl.models import (
     Verdict,
 )
 from sqbyl.project import Project
+from sqbyl.yamlio import load_yaml
 from sqbyl_runtime.llm.base import LLMClient, LLMRequest, Message
-from sqbyl_runtime.models import Dialect
+from sqbyl_runtime.models import Dialect, TableSemantics
 from sqbyl_runtime.state.layout import SqbylPaths
 from sqbyl_runtime.state.traces import TraceWriter, llm_call_span, new_trace_id
 
@@ -263,6 +264,10 @@ def coach(
         )
         for d in drafts
     ]
+    # Repair mislocated anchors and drop edits that can't be applied safely (a wrong
+    # target_file, or an edit that would introduce an unknown key and break the file's
+    # schema) BEFORE the report is saved — so `coach apply` never faces a broken proposal.
+    proposals = [_validate_proposal(project, p) for p in proposals]
     return CoachReport(
         run_id=run.run_id,
         model=model,
@@ -411,6 +416,96 @@ def _apply_edits(text: str, proposal: CoachProposal) -> str:
     return text
 
 
+def _is_semantics_target(target_file: str) -> bool:
+    """True when the target lives under ``semantics/`` (so its schema is ``TableSemantics``)."""
+    return target_file.replace("\\", "/").split("/", 1)[0] == "semantics"
+
+
+def _parses_as_table(text: str) -> bool:
+    """True when ``text`` loads as a valid :class:`TableSemantics` — the gate a Coach edit to a
+    ``semantics/`` file must pass, so an invented field (e.g. ``description_note``) can't be
+    written into a file that would then fail to load on the next command (invariant 2)."""
+    try:
+        TableSemantics.model_validate(load_yaml(text))
+    except Exception:
+        return False
+    return True
+
+
+def _try_apply_one(text: str, edit: CoachEdit) -> str | None:
+    """Apply one edit like :func:`_apply_edits`, but return ``None`` (never raise) when the
+    anchor is missing or ambiguous — used to *simulate* an edit while validating a proposal
+    before it is ever saved."""
+    if not edit.find:
+        body = edit.replace if edit.replace.endswith("\n") else edit.replace + "\n"
+        if text == "":
+            return body
+        prefix = text if text.endswith("\n") else text + "\n"
+        return prefix + "\n" + body
+    if text.count(edit.find) != 1:
+        return None
+    return text.replace(edit.find, edit.replace, 1)
+
+
+def _writable_files_text(project: Project) -> dict[str, str]:
+    """Every allowlisted, writable context file → its current text (relative path keyed).
+
+    The search space for relocating a mislocated anchor: only the agent's context surface
+    (:data:`_WRITABLE_SUBDIRS` / :data:`_WRITABLE_FILES`), never benchmarks or the manifest."""
+    files: dict[str, str] = {}
+    for sub in _WRITABLE_SUBDIRS:
+        d = project.root / sub
+        if d.is_dir():
+            for f in sorted(d.glob("*.yaml")) + sorted(d.glob("*.sql")):
+                files[f"{sub}/{f.name}"] = f.read_text()
+    for name in _WRITABLE_FILES:
+        p = project.root / name
+        if p.exists():
+            files[name] = p.read_text()
+    return files
+
+
+def _validate_proposal(project: Project, proposal: CoachProposal) -> CoachProposal:
+    """Repair a freshly-generated proposal so ``coach apply`` can never face a broken edit.
+
+    Two failure modes the model produces in the wild: (1) it names ``target_file`` A but its
+    ``find`` anchor actually lives in file B (spec §8 — anchors copied from the wrong file),
+    and (2) an edit's ``replace`` invents a field the schema forbids, which would make the
+    file fail to load on the *next* command. So here we:
+
+    1. **Relocate** — if the named file doesn't uniquely contain every anchor but exactly one
+       other writable file does, that file is the real owner; rewrite ``target_file``.
+    2. **Drop unsafe edits** — an edit whose anchor still can't be located uniquely, or which
+       would break a ``semantics/`` file's schema (invariant 2), is removed.
+
+    A proposal left with zero edits is kept — its root cause still informs the human — but
+    :func:`apply_proposal` refuses it (below) rather than writing a no-op."""
+    files = _writable_files_text(project)
+    anchors = [e.find for e in proposal.edits if e.find]
+    target = proposal.target_file
+    if anchors and not all(files.get(target, "").count(a) == 1 for a in anchors):
+        owners = [rel for rel, text in files.items() if all(text.count(a) == 1 for a in anchors)]
+        if len(owners) == 1:
+            target = owners[0]
+
+    text = files.get(target, "")
+    guard_schema = _is_semantics_target(target)
+    kept: list[CoachEdit] = []
+    cur = text
+    for edit in proposal.edits:
+        after = _try_apply_one(cur, edit)
+        if after is None:
+            continue  # missing/ambiguous anchor — can't apply safely
+        if guard_schema and after.strip() and not _parses_as_table(after):
+            continue  # would introduce an unknown key / break the schema
+        cur = after
+        kept.append(edit)
+
+    return proposal.model_copy(
+        update={"target_file": target, "edits": kept, "target_fingerprint": _fingerprint(text)}
+    )
+
+
 def apply_proposal(project: Project, proposal: CoachProposal, *, force: bool = False) -> Path:
     """Write one proposal's edits to its target file → the changed path (plan 5.4).
 
@@ -424,7 +519,15 @@ def apply_proposal(project: Project, proposal: CoachProposal, *, force: bool = F
 
     Not idempotent by itself: re-applying is guarded one level up, by the persisted
     ``applied_at`` marker in ``sqbyl coach apply`` (a second direct call here would be caught
-    by the drift check — the first write changes the file — but the CLI is the real guard)."""
+    by the drift check — the first write changes the file — but the CLI is the real guard).
+
+    Refuses an **edit-less** proposal (a prose-only/unresolved diagnosis, or one whose edits
+    were all stripped as unsafe at generation time) rather than reporting a no-op success, and
+    refuses any edit that would leave a ``semantics/`` file failing its schema (invariant 2)."""
+    if not proposal.edits:
+        raise ApplyError(
+            "no edits to apply — this proposal is prose-only/unresolved (nothing to write)"
+        )
     path = _resolve_target(project, proposal.target_file)
     before = path.read_text() if path.exists() else ""
     if (
@@ -437,6 +540,16 @@ def apply_proposal(project: Project, proposal: CoachProposal, *, force: bool = F
             "to refresh the proposal (or pass --force to apply anyway)"
         )
     after = _apply_edits(before, proposal)
+    # Never leave a semantics file that won't load: validate the *result* before writing, so a
+    # bad edit (e.g. an invented field) fails here — with the file untouched — not on the next
+    # command with a traceback that doesn't point back to `coach apply`.
+    if _is_semantics_target(str(path.relative_to(project.root.resolve()))) and not _parses_as_table(
+        after
+    ):
+        raise ApplyError(
+            f"{proposal.target_file}: this edit would make the file fail schema validation "
+            "(likely an unknown/invalid field) — refusing to write a broken file"
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(after)
     return path

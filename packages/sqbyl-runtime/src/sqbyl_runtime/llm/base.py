@@ -161,6 +161,16 @@ class LLMClient(abc.ABC):
         """Run one completion. Implementations own caching/structured-output details."""
         raise NotImplementedError
 
+    def check_auth(self) -> None:
+        """Verify the provider credential works, spending **no tokens** — raise on failure.
+
+        A cheap, token-free preflight (a models-list call on the real clients) so a bad or
+        expired key surfaces *before* a paid command's estimate is approved, not partway
+        through enrichment (finding #5). The default is a no-op: the mock and record-replay
+        clients never touch the network, so CI stays token-free (invariant 4); only the real
+        provider clients override this."""
+        return None
+
     def complete_text(
         self,
         messages: list[Message],

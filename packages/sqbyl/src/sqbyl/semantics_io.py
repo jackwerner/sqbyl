@@ -39,6 +39,40 @@ def dump_yaml_path(data: dict[str, Any], path: Path) -> None:
     path.write_text(dump_yaml(data))
 
 
+def sync_new_columns(
+    raw: dict[str, Any], live: TableSemantics
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """Overlay the *live* schema's column list onto a hand-authored file, **additively**.
+
+    Schema drift (a new DB column) is otherwise a lose-lose: ``profile`` never discovers a
+    column that isn't already in the YAML, and ``introspect --force`` rewrites the whole file,
+    discarding every description/synonym/profile on it (finding #12). This appends any column
+    the live table has but the file lacks — as a draft row (name + type + DB comment), profile-
+    less, exactly like a fresh introspect — while leaving every existing column (and all its
+    hand-authored meaning) byte-for-byte untouched.
+
+    Returns ``(merged_raw, added, removed)``: ``added`` are the appended column names; ``removed``
+    are columns still in the file but gone from the live schema (reported, never deleted — a
+    human decides whether a dropped column should leave the semantics)."""
+    existing = [c for c in raw.get("columns", []) if isinstance(c, dict)]
+    existing_names = {c.get("name") for c in existing}
+    live_by_name = {c.name: c for c in live.columns}
+
+    added = [c.name for c in live.columns if c.name not in existing_names]
+    removed = [n for n in existing_names if isinstance(n, str) and n not in live_by_name]
+
+    out = dict(raw)
+    columns = [dict(c) for c in existing]
+    for name in added:
+        col = live_by_name[name]
+        draft: dict[str, Any] = {"name": col.name, "type": col.type}
+        if col.description:  # carry a DB comment through, same as a fresh introspect draft
+            draft["description"] = col.description
+        columns.append(draft)
+    out["columns"] = columns
+    return out, added, removed
+
+
 @dataclass(frozen=True)
 class LoadedSemantics:
     """A semantics file parsed for profiling: the validated model, the raw dict to

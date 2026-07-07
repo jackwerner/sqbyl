@@ -69,12 +69,17 @@ class ModelConfig(SqbylModel):
             )
         return self
 
-    def for_role(self, role: str) -> str:
-        """Resolve the model id for a role, falling back to ``default``."""
+    def for_role(self, role: str, override: str | None = None) -> str:
+        """Resolve the model id for a role: an explicit per-role pin wins, else ``override``
+        (e.g. ``sqbyl init --model``), else ``default``.
+
+        ``override`` lets a global ``--model`` reprice/redirect *every* role at once — synth
+        and judge included — while still honoring a role a user deliberately pinned in
+        ``sqbyl.yaml``. With ``override=None`` this is the original default-fallback behavior."""
         if role not in MODEL_ROLES:
             raise ValueError(f"unknown model role {role!r}; expected one of {MODEL_ROLES}")
         pinned: str | None = getattr(self, f"{role}_model")
-        return pinned or self.default
+        return pinned or override or self.default
 
 
 class AutomationConfig(SqbylModel):

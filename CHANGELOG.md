@@ -11,6 +11,60 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-07-07
+
+Fixes and new affordances from a first-time-user setup pass against a live Postgres.
+The headline items close two ways the Coach/optimizer could corrupt a project file, and
+add a supported path for schema drift. Upgrade recommended.
+
+### Added
+
+- **`sqbyl init` scaffolds a missing `sqbyl.yaml`** — a first run in an empty directory
+  now walks you through name / dialect / connection URL / provider / API-key env var (and
+  writes a ready-to-fill template in non-interactive / `--auto` mode) instead of raising a
+  bare `FileNotFoundError`.
+- **`$0` credential preflight** — `init` verifies the LLM key with a token-free provider
+  call before you approve any spend, so a bad/expired key fails fast rather than partway
+  through paid enrichment. (No-op under record-replay, so CI still spends nothing.)
+- **`sqbyl eval show <split> <id>`** — prints one saved row's full detail (plan,
+  generated vs gold SQL, each scorer's pass/fail + detail, each judge's verdict +
+  rationale) for headless/terminal review, no browser required. `$0`.
+- **`sqbyl introspect --sync`** — additively merges new live columns into existing
+  semantics files (keeping every description/synonym/profile) and reports dropped columns
+  without deleting them — a non-destructive alternative to `--force`, which rewrites the
+  whole file. `init` also names schema drift explicitly in its free pass.
+- **`sqbyl coach --regenerate`** — `init` now prints the Coach proposals it already paid
+  for, and `sqbyl coach` reuses an existing report for the current dev run for `$0`
+  (`--regenerate` forces a fresh, paid call).
+
+### Fixed
+
+- **Coach could corrupt a project file** — a proposal whose `find` anchor lived in a
+  different file, or whose edit introduced a schema-invalid field (e.g. `description_note`
+  on a column, `description` on a join), could be written to disk and break the next
+  command. Proposals are now validated/repaired at generation (mislocated anchors are
+  relocated; schema-breaking edits are stripped), `coach apply` re-validates the target
+  against its pydantic schema before writing, and an edit-less proposal refuses to apply
+  instead of reporting a false success.
+- **`sqbyl optimize` could leave an un-reverted file on a crash** — the per-trial snapshot
+  restore now runs in a `finally`, so any exception after an edit lands rolls the file back
+  before propagating. `optimize` also warns when the project isn't a git repo, since its
+  "revert with `git checkout`" guidance assumes one.
+- **`init --model` now reprices every role** — a cheaper-model swap moved only the
+  annotate/eval lines while synth/judge stayed pinned to the default; the override now
+  applies to every role (synth, judge, coach, eval) unless a role is explicitly pinned in
+  `sqbyl.yaml`, so the estimate matches what actually gets spent.
+- **`sqbyl review` returned a clean error instead of a 500** — `/accept` and `/rerun` now
+  translate a failed database connection (env unset, DB down, rotated credential) into the
+  typed `db_error` result the UI already understands.
+- **`sqbyl eval test` on an empty held-out set** no longer suggests `sqbyl synth` (which
+  cannot write `test.yaml` — invariant 3); it now points you to hand-author it.
+
+### Changed
+
+- The judge Review tab shows a "pile complete" banner and dims the just-resolved card once
+  every row is reviewed, so finishing the last row reads as done rather than ignored.
+
 ## [0.1.1] — 2026-07-06
 
 A bug-fix release. 0.1.0 shipped with `sqbyl ask` broken against current default
@@ -80,6 +134,7 @@ may still change with minor-version bumps until `1.0`.
   seam. Dependency vulnerabilities are scanned with `pip-audit`; updates arrive via
   Dependabot.
 
-[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jackwerner/sqbyl/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/jackwerner/sqbyl/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/jackwerner/sqbyl/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jackwerner/sqbyl/releases/tag/v0.1.0
