@@ -148,6 +148,10 @@ class FreePass:
     joins: int
     ambiguous_joins: int
     schema_fingerprint: str
+    # semantics filename -> live columns the file is missing (schema drift, finding #12). The
+    # eval-freshness gate already keys on the schema fingerprint; this names *what* drifted so
+    # init can point at `introspect --sync` instead of silently ignoring the new column.
+    column_drift: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def n_tables(self) -> int:
@@ -202,7 +206,26 @@ def run_free_pass(project: Project, *, force: bool = False) -> FreePass:
         joins=len(joins),
         ambiguous_joins=ambiguous,
         schema_fingerprint=_schema_fingerprint(raw_tables),
+        column_drift=_column_drift(raw_tables, profiled),
     )
+
+
+def _column_drift(
+    live_tables: list[TableSemantics], profiled: list[TableSemantics]
+) -> dict[str, list[str]]:
+    """Live columns an existing semantics file is missing (finding #12). A brand-new table
+    already got a full fresh draft in the free pass, so only pre-existing files can drift."""
+    by_qualified = {t.table: t for t in profiled}
+    drift: dict[str, list[str]] = {}
+    for live in live_tables:
+        have = by_qualified.get(live.table)
+        if have is None:
+            continue
+        existing = {c.name for c in have.columns}
+        new_cols = [c.name for c in live.columns if c.name not in existing]
+        if new_cols:
+            drift[table_filename(live.table)] = new_cols
+    return drift
 
 
 # ── the costed plan (spec §5.5 Phase 1 — the estimate you approve) ───────────────────────

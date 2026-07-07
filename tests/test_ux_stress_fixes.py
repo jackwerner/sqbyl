@@ -26,6 +26,7 @@ from sqbyl.models import (
     Verdict,
 )
 from sqbyl.project import Project
+from sqbyl.yamlio import load_yaml
 from sqbyl_runtime.llm.mock import MockLLMClient, structured_reply
 from sqbyl_runtime.state.layout import SqbylPaths
 
@@ -401,3 +402,99 @@ def test_empty_test_split_gives_hand_authored_hint(
     out = capsys.readouterr().out
     assert "held-out" in out and "hand-authored" in out
     assert "run `sqbyl synth` first" not in out  # the old, categorically-wrong advice is gone
+
+
+# ── #12: schema drift — non-destructive column sync + an explicit drift signal ────────────
+
+
+def test_sync_new_columns_appends_and_reports() -> None:
+    from sqbyl.semantics_io import sync_new_columns
+    from sqbyl_runtime.models import Column, TableSemantics
+
+    raw = {
+        "table": "analytics.orders",
+        "description": "One row per order.",
+        "columns": [{"name": "order_id", "type": "integer", "description": "The PK."}],
+    }
+    live = TableSemantics(
+        table="analytics.orders",
+        columns=[
+            Column(name="order_id", type="integer"),
+            Column(name="gift_wrapped", type="boolean", description="from a DB comment"),
+        ],
+    )
+    merged, added, removed = sync_new_columns(raw, live)
+    assert added == ["gift_wrapped"] and removed == []
+    assert [c["name"] for c in merged["columns"]] == ["order_id", "gift_wrapped"]
+    assert merged["columns"][0]["description"] == "The PK."  # existing meaning untouched
+    assert merged["columns"][1]["description"] == "from a DB comment"  # DB comment carried
+    assert merged["description"] == "One row per order."  # table-level annotation kept
+
+
+def test_sync_new_columns_reports_but_never_deletes_a_dropped_column() -> None:
+    from sqbyl.semantics_io import sync_new_columns
+    from sqbyl_runtime.models import Column, TableSemantics
+
+    raw = {"table": "t", "columns": [{"name": "a", "type": "int"}, {"name": "gone", "type": "int"}]}
+    live = TableSemantics(table="t", columns=[Column(name="a", type="int")])
+    merged, added, removed = sync_new_columns(raw, live)
+    assert added == [] and removed == ["gone"]
+    assert [c["name"] for c in merged["columns"]] == ["a", "gone"]  # left in place, not deleted
+
+
+def _duckdb_project(root: Path, orders_yaml: str) -> None:
+    _write(
+        root / "sqbyl.yaml",
+        "name: p\ndatabase:\n  dialect: duckdb\n  url: env:DATABASE_URL\n"
+        "model:\n  provider: anthropic\n  api_key: env:ANTHROPIC_API_KEY\n",
+    )
+    _write(root / "semantics" / "orders.yaml", orders_yaml)
+
+
+def test_introspect_sync_adds_live_columns_without_wiping_annotations(
+    tmp_path: Path, duckdb_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", str(duckdb_path))
+    root = tmp_path / "proj"
+    # Only 2 of the 5 live columns, with hand-authored meaning that must survive.
+    _duckdb_project(
+        root,
+        "table: analytics.orders\ndescription: One row per order.\ncolumns:\n"
+        "  - name: order_id\n    type: integer\n    description: The order PK.\n"
+        "  - name: customer_id\n    type: integer\n",
+    )
+    assert main(["introspect", "--sync", str(root)]) == 0
+
+    data = load_yaml((root / "semantics" / "orders.yaml").read_text())
+    names = {c["name"] for c in data["columns"]}
+    assert names >= {"order_id", "customer_id", "amount_cents", "status", "created_at"}
+    assert data["description"] == "One row per order."  # table annotation kept
+    order_id = next(c for c in data["columns"] if c["name"] == "order_id")
+    assert order_id["description"] == "The order PK."  # column annotation kept
+
+
+def test_introspect_force_and_sync_are_mutually_exclusive(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["introspect", "--force", "--sync", str(tmp_path)]) == 2
+    assert "mutually exclusive" in capsys.readouterr().out
+
+
+def test_init_dry_run_surfaces_schema_drift(
+    tmp_path: Path,
+    duckdb_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", str(duckdb_path))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "unused")
+    root = tmp_path / "proj"
+    # orders.yaml lists only order_id → the free pass should flag the 4 missing live columns.
+    _duckdb_project(
+        root, "table: analytics.orders\ncolumns:\n  - name: order_id\n    type: integer\n"
+    )
+    code = main(["init", "--dry-run", str(root)])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "orders.yaml" in out and "introspect --sync" in out
+    assert "created_at" in out  # a specific drifted column is named

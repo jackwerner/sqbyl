@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from sqbyl.models.runs import QuestionResult, ScoredRun
     from sqbyl.project import Project
     from sqbyl_runtime.llm.base import Usage
+    from sqbyl_runtime.models import TableSemantics
 
 
 def _schema_export(args: list[str]) -> int:
@@ -38,12 +39,20 @@ def _schema_export(args: list[str]) -> int:
 
 
 def _introspect(args: list[str]) -> int:
-    """`sqbyl introspect [DIR] [--force]` — draft semantics/*.yaml from the live schema."""
+    """`sqbyl introspect [DIR] [--force] [--sync]` — draft semantics/*.yaml from the live schema.
+
+    ``--force`` overwrites existing files (discarding annotations). ``--sync`` is the
+    non-destructive alternative: it **appends** any new live columns to existing files while
+    keeping every description/synonym/profile, and reports columns dropped from the schema
+    (finding #12)."""
     from sqbyl.introspect import introspect
     from sqbyl.project import Project
     from sqbyl.semantics_io import table_filename, write_draft
 
-    force = "--force" in args
+    force, sync = "--force" in args, "--sync" in args
+    if force and sync:
+        print("--force and --sync are mutually exclusive (one overwrites, one merges additively)")
+        return 2
     positional = [a for a in args if not a.startswith("-")]
     project = Project.load(positional[0] if positional else ".")
 
@@ -52,17 +61,63 @@ def _introspect(args: list[str]) -> int:
     with project.connect() as db:
         tables = introspect(db)
 
+    if sync:
+        return _introspect_sync(project, tables)
+
     wrote, skipped = 0, 0
     for table in tables:
         path = project.semantics_dir / table_filename(table.table)
         if path.exists() and not force:
-            print(f"  · {path.name} exists — skipping (use --force to overwrite)")
+            print(
+                f"  · {path.name} exists — skipping (--force to overwrite, --sync to add columns)"
+            )
             skipped += 1
             continue
         write_draft(table, path)
         print(f"  ✓ {path.name}  ({len(table.columns)} columns, {len(table.joins)} joins)")
         wrote += 1
     print(f"done — wrote {wrote}, skipped {skipped}")
+    return 0
+
+
+def _introspect_sync(project: Project, tables: list[TableSemantics]) -> int:
+    """`--sync`: additively merge new live columns into existing semantics files, keeping every
+    hand-authored description/synonym/profile (finding #12). New tables get a fresh draft."""
+    from sqbyl.semantics_io import (
+        dump_yaml_path,
+        sync_new_columns,
+        table_filename,
+        write_draft,
+    )
+    from sqbyl.yamlio import load_yaml
+
+    updated = created = unchanged = 0
+    for table in tables:
+        path = project.semantics_dir / table_filename(table.table)
+        if not path.exists():
+            write_draft(table, path)
+            print(f"  ✓ {path.name}  new table drafted ({len(table.columns)} columns)")
+            created += 1
+            continue
+        raw = load_yaml(path.read_text())
+        if not isinstance(raw, dict):
+            print(f"  · {path.name} isn't a mapping — skipping")
+            continue
+        merged, added, removed = sync_new_columns(raw, table)
+        if added:
+            dump_yaml_path(merged, path)
+            print(f"  ✓ {path.name}  +{len(added)} column(s): {', '.join(added)}")
+            updated += 1
+        else:
+            unchanged += 1
+        if removed:
+            print(
+                f"  ⚠ {path.name}  {len(removed)} column(s) in the file no longer exist in the DB "
+                f"({', '.join(removed)}) — left in place; remove by hand if intended"
+            )
+    print(
+        f"done — {updated} updated, {created} new, {unchanged} already in sync (annotations kept)"
+    )
     return 0
 
 
@@ -456,8 +511,13 @@ def _print_optimize_estimate(
 
 
 def _warn_if_dirty(project: Project) -> None:
-    """Best-effort: warn if the working tree already has uncommitted changes, so the optimizer's
-    machine edits don't silently intermingle with the user's own (responsible-ai)."""
+    """Best-effort: warn before an autonomous optimize run if the tree is uncommitted, or if the
+    project isn't a git repo at all — since the command's own guidance ("revert with
+    ``git checkout``") assumes git as the undo path (findings #11 / responsible-ai).
+
+    The loop rolls back every *rejected* edit itself (snapshot/restore, even on a crash), so
+    this is about the *kept* edits: without git the user has no easy way to review or undo them.
+    """
     import subprocess
 
     try:
@@ -469,7 +529,13 @@ def _warn_if_dirty(project: Project) -> None:
         )
     except (OSError, subprocess.SubprocessError):
         return
-    if out.returncode == 0 and out.stdout.strip():
+    if out.returncode != 0:
+        # Not a git repo (or git unavailable): the git-based undo story doesn't hold, so say so.
+        print(
+            "  ⚠ this project isn't a git repo — optimize edits files in place and can't offer a "
+            "git-based undo for kept edits. Consider `git init` first so you can review/revert.\n"
+        )
+    elif out.stdout.strip():
         print(
             "  ⚠ your working tree has uncommitted changes — commit or stash first so the "
             "optimizer's edits stay distinguishable from yours.\n"
@@ -1394,6 +1460,13 @@ def _init(args: list[str]) -> int:
         f"  ✓ {free.n_tables} table(s), {free.n_columns} column(s) profiled · "
         f"{free.joins} join candidate(s) ({free.ambiguous_joins} ambiguous)"
     )
+    # Name schema drift explicitly instead of folding it silently into "needs re-eval": a new
+    # live column is invisible to profile/annotate until it's synced into the file (finding #12).
+    for fname, cols in free.column_drift.items():
+        print(
+            f"  ⚠ {fname}: live schema has {len(cols)} column(s) not in the file "
+            f"({', '.join(cols)}) — run `sqbyl introspect --sync` to add them (keeps annotations)"
+        )
 
     plan = initmod.build_plan(
         project, free, model=model, steps=steps, synth_n=synth_n, as_of=as_of, override=model_opt
