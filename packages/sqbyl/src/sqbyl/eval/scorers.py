@@ -24,6 +24,7 @@ import sqlglot
 from sqlglot.errors import SqlglotError
 
 from sqbyl.eval.comparator import compare_result_sets, normalize_as_of
+from sqbyl.models.benchmarks import MatchMode
 from sqbyl.models.runs import (
     SCORER_ASSET_ROUTING,
     SCORER_RESULT_CORRECTNESS,
@@ -105,12 +106,14 @@ def score_result_correctness(
     as_of: datetime | None = None,
     dialect: Dialect,
     float_tol: float = 1e-6,
+    match_mode: MatchMode = MatchMode.exact,
 ) -> ScorerResult:
     """Execute gold and generated SQL and compare result sets (the headline scorer).
 
     ``passed=None`` (not applicable) when there is no executable gold SQL — that case is
     routed to manual review by :func:`score_question`. Both statements are ``as_of``-
-    normalized so a ``now()``-relative gold scores stably (spec §13).
+    normalized so a ``now()``-relative gold scores stably (spec §13). ``match_mode`` selects
+    exact vs. ``columns_superset`` comparison (spec §7).
     """
     if gold_sql is None:
         return ScorerResult(
@@ -130,7 +133,9 @@ def score_result_correctness(
             passed=False,
             detail=f"generated SQL failed to execute: {exc}",
         )
-    comparison = compare_result_sets(gold_rows, gen_rows, float_tol=float_tol)
+    comparison = compare_result_sets(
+        gold_rows, gen_rows, float_tol=float_tol, match_mode=match_mode
+    )
     return ScorerResult(
         name=SCORER_RESULT_CORRECTNESS, passed=comparison.equal, detail=comparison.reason
     )
@@ -148,6 +153,7 @@ def score_question(
     as_of: datetime | None = None,
     dialect: Dialect,
     float_tol: float = 1e-6,
+    match_mode: MatchMode = MatchMode.exact,
 ) -> tuple[Verdict, list[ScorerResult]]:
     """Run every applicable Layer-1 scorer and fold them into one :class:`Verdict`.
 
@@ -171,6 +177,7 @@ def score_question(
         as_of=as_of,
         dialect=dialect,
         float_tol=float_tol,
+        match_mode=match_mode,
     )
     scorers.append(correctness)
 

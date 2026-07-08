@@ -8,10 +8,15 @@ sqbyl init [<db-url>]     # guided: free profile → costed plan → confirm →
                           #   --dry-run to estimate only; --model M reprices every role
 sqbyl review              # attention queue + golden-set / judge / proposal review (web UI)
 sqbyl eval [dev|test]     # run the eval harness → scored report + run diff
+                          #   --trials N re-runs to expose hosted-model variance (reports the spread)
 sqbyl eval show <split> <id>   # print one saved row's full detail (plan/SQL/scorers/judges), $0
 sqbyl synth [--n 40]      # execution-grounded candidate questions → dev set
 sqbyl coach [apply N... | --regenerate]   # review/apply context edits; reuses the last report ($0)
+sqbyl coach --from-test-failure <id>      # diagnose ONE held-out failure from the agent's trace
+                          #   (never its gold); human-review-only, provenance-stamped, item quarantined
 sqbyl optimize --budget $5 --target 0.9   # autonomous coach→apply→eval loop on dev
+                          #   --trials N scores each candidate N× (keep on a majority — variance guard);
+                          #   --require-significant also gates keeps on a paired sign test
 sqbyl ask "..."           # one-shot NL→SQL→result (--narrate adds a plain-English answer)
 sqbyl release create --tag v1             # bless current version → portable JSON
 sqbyl cost <command>      # estimate $ / tokens, spend nothing
@@ -26,6 +31,11 @@ Per-step à-la-carte commands are documented in the [design spec, §10](sqbyl-de
 `introspect` (add `--sync` to merge **new** live columns into existing semantics files without
 losing annotations, or `--force` to redraft), `profile`, `annotate`, `judge`, `runs`, `serve`,
 `run`.
+
+A benchmark question defaults to **exact** result-set matching. Set `match_mode: columns_superset`
+on a question to also count an answer correct when it reproduces every gold column and row but
+adds *extra* informative columns — a deliberately weaker bar you opt into per question (an extra
+ungrouped column can change an aggregate's meaning, so it is never the default).
 
 ## Cost & safety flags
 

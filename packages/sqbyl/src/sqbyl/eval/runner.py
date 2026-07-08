@@ -112,6 +112,7 @@ def score_run(
             as_of=as_of,
             dialect=dialect,
             float_tol=float_tol,
+            match_mode=q.match_mode,
         )
         # Layer 2: adjudicate only the rows Layer 1 couldn't resolve. adjudicate short-
         # circuits (zero tokens) on any verdict that isn't manual_review (spec §7).

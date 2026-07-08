@@ -3,7 +3,6 @@
   question: How many orders are there in total?
   gold_sql: |
     SELECT COUNT(*) FROM analytics.orders;
-  eval_note: "A single scalar count."
   difficulty: easy
   tags: [orders, count]
 
@@ -12,7 +11,6 @@
   gold_sql: |
     SELECT SUM(amount_cents)/100.0 AS net_revenue
     FROM analytics.orders WHERE status='confirmed';
-  eval_note: "Must net out refunds; a single scalar in dollars."
   difficulty: medium
   tags: [revenue]
 
@@ -31,7 +29,6 @@
     FROM analytics.orders o
     JOIN analytics.customers c ON o.customer_id = c.customer_id
     GROUP BY c.region ORDER BY net_revenue DESC;
-  eval_note: "Requires the orders↔customers join."
   difficulty: hard
   tags: [revenue, join, group-by]
 

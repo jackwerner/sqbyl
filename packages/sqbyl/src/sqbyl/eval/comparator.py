@@ -37,8 +37,15 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.errors import SqlglotError
 
+from sqbyl.models.benchmarks import MatchMode
 from sqbyl_runtime.db import QueryResult
 from sqbyl_runtime.models import Dialect
+
+# A safety cap on the injective column-assignment search in ``columns_superset`` mode: a gold
+# result whose columns share value domains can produce many candidate assignments. Past this
+# many attempts we stop and report not-equal (conservative → routes to review, never a false
+# pass). Real benchmark results are far below it.
+_SUPERSET_MAX_ATTEMPTS = 20000
 
 # Function names that resolve to the wall-clock "now" and so make gold drift over time.
 _NOW_TIMESTAMP_FNS = {"now", "current_timestamp", "getdate", "sysdate", "current_time"}
@@ -94,9 +101,22 @@ class Comparison:
 
 
 def compare_result_sets(
-    gold: QueryResult, generated: QueryResult, *, float_tol: float = 1e-6
+    gold: QueryResult,
+    generated: QueryResult,
+    *,
+    float_tol: float = 1e-6,
+    match_mode: MatchMode = MatchMode.exact,
 ) -> Comparison:
-    """Order-insensitive, alias-insensitive, numerically-tolerant set comparison."""
+    """Order-insensitive, alias-insensitive, numerically-tolerant set comparison.
+
+    ``match_mode`` (spec §7): ``exact`` requires the same columns (by position/value) and the
+    same rows. ``columns_superset`` accepts a generated result that reproduces every gold
+    column and every gold row but adds *extra* columns — a deliberately weaker bar the
+    benchmark author opts into per question (see :class:`~sqbyl.models.benchmarks.MatchMode`).
+    """
+    ndigits = _tolerance_digits(float_tol)
+    if match_mode is MatchMode.columns_superset:
+        return _compare_superset(gold, generated, ndigits)
     if len(gold.columns) != len(generated.columns):
         return Comparison(
             equal=False,
@@ -105,7 +125,6 @@ def compare_result_sets(
                 f"generated has {len(generated.columns)}"
             ),
         )
-    ndigits = _tolerance_digits(float_tol)
     gold_ms = _canonical_multiset(gold, ndigits)
     gen_ms = _canonical_multiset(generated, ndigits)
     if gold_ms == gen_ms:
@@ -119,6 +138,88 @@ def compare_result_sets(
             f"{sum(only_gen.values())} only in generated "
             f"(gold {len(gold.rows)} rows, generated {len(generated.rows)} rows)"
         ),
+    )
+
+
+def _compare_superset(gold: QueryResult, generated: QueryResult, ndigits: int) -> Comparison:
+    """``columns_superset`` match: is gold a column-subset of generated on the same rows?
+
+    True iff there is an **injective** assignment of each gold column to a *distinct* generated
+    column such that projecting the generated rows onto those columns (in gold's order)
+    reproduces gold's row multiset. This stays alias-insensitive (columns matched by value, not
+    name) like ``exact``, and stays row-order insensitive (multiset). Extra generated columns
+    are ignored; a *missing* gold column, a wrong value, or a differing row count all fail.
+    """
+    n_gold, n_gen = len(gold.columns), len(generated.columns)
+    if n_gen < n_gold:
+        return Comparison(
+            equal=False,
+            reason=(
+                f"generated has fewer columns than gold ({n_gen} < {n_gold}); "
+                "a superset match needs every gold column present"
+            ),
+        )
+    gold_rows = [tuple(_canon_cell(v, ndigits) for v in row) for row in gold.rows]
+    gen_rows = [tuple(_canon_cell(v, ndigits) for v in row) for row in generated.rows]
+    if len(gold_rows) != len(gen_rows):
+        return Comparison(
+            equal=False,
+            reason=(
+                f"row count differs: gold {len(gold_rows)} rows, generated {len(gen_rows)} rows"
+            ),
+        )
+    gold_ms = Counter(gold_rows)
+    # Necessary pruning condition: gold column i can only map to a generated column whose value
+    # *multiset* equals column i's — the marginal must match on both sides of any real projection.
+    gold_col_ms = [Counter(r[i] for r in gold_rows) for i in range(n_gold)]
+    gen_col_ms = [Counter(r[j] for r in gen_rows) for j in range(n_gen)]
+    candidates = [
+        [j for j in range(n_gen) if gen_col_ms[j] == gold_col_ms[i]] for i in range(n_gold)
+    ]
+    for i, cand in enumerate(candidates):
+        if not cand:
+            return Comparison(
+                equal=False,
+                reason=f"no generated column reproduces gold column {i} — not a superset",
+            )
+
+    attempts = 0
+
+    def _search(assignment: list[int], used: set[int]) -> bool:
+        nonlocal attempts
+        i = len(assignment)
+        if i == n_gold:
+            attempts += 1
+            projected = Counter(tuple(r[j] for j in assignment) for r in gen_rows)
+            return projected == gold_ms
+        for j in candidates[i]:
+            if j in used or attempts >= _SUPERSET_MAX_ATTEMPTS:
+                continue
+            assignment.append(j)
+            used.add(j)
+            if _search(assignment, used):
+                return True
+            assignment.pop()
+            used.discard(j)
+        return False
+
+    if _search([], set()):
+        extra = n_gen - n_gold
+        return Comparison(
+            equal=True,
+            reason=(
+                f"{len(gold_rows)} row(s) match on gold's {n_gold} column(s)"
+                + (f"; generated adds {extra} extra column(s)" if extra else "")
+            ),
+        )
+    if attempts >= _SUPERSET_MAX_ATTEMPTS:
+        return Comparison(
+            equal=False,
+            reason="superset search hit its attempt cap without a match — treating as not equal",
+        )
+    return Comparison(
+        equal=False,
+        reason="generated does not reproduce gold's rows on any subset of its columns",
     )
 
 

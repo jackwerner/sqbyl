@@ -20,6 +20,7 @@ is metered to ``.sqbyl/usage.db`` and eval spend is metered by :meth:`Project.ev
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -47,6 +48,8 @@ def optimize(
     budget: float | None,
     min_gain: int = 1,
     max_rounds: int = _DEFAULT_MAX_ROUNDS,
+    trials: int = 1,
+    require_significant: bool = False,
     as_of: datetime | None = None,
     score_test: bool = True,
 ) -> OptimizeResult:
@@ -57,6 +60,15 @@ def optimize(
     requires it). ``min_gain`` is the net questions an edit must fix (fixed − broke) to be
     kept — raise it to resist accepting small-sample noise on tiny dev sets. ``score_test``
     runs the single held-out eval on the picked version at the end.
+
+    ``trials`` re-runs each candidate's dev eval N times and keeps the edit only when a strict
+    **majority** of trials clear ``min_gain`` — the defense against hosted-model inference
+    nondeterminism (even at temperature 0 a re-run can flip a question, so a single trial's
+    delta can be an edit effect *or* sampling noise; a paired sign test on one sample can't
+    tell them apart — repeated trials can). ``require_significant`` additionally requires the
+    representative trial's paired gain to clear the sign test before keeping (stricter; may
+    reject a real single-question fix on a tiny set, which is the honest call — you can't
+    distinguish it from noise). Costs scale with ``trials``, so it's opt-in (default 1).
     """
     # Freeze the clock ONCE so every eval in the loop (baseline, trials, final held-out) scores
     # now()-relative gold against one instant — otherwise a calendar rollover mid-loop could
@@ -71,6 +83,8 @@ def optimize(
             budget=budget,
             min_gain=min_gain,
             max_rounds=max_rounds,
+            trials=max(1, trials),
+            require_significant=require_significant,
             as_of=frozen_as_of,
             score_test=score_test,
             paths=paths,
@@ -86,6 +100,8 @@ def _run(
     budget: float | None,
     min_gain: int,
     max_rounds: int,
+    trials: int,
+    require_significant: bool,
     as_of: datetime,
     score_test: bool,
     paths: SqbylPaths,
@@ -132,10 +148,13 @@ def _run(
             break
 
         eval_cost = eval_estimate(agent_model, questions=dev_n, self_repair_attempts=self_repair)
+        # A candidate is now scored ``trials`` times, so the budget check must cover the whole
+        # batch, not one eval (invariant 5 — never start a step we can't afford to finish).
+        trial_batch_cost = eval_cost.total_usd * trials
         accepted = False
         budget_hit = False
         for proposal in report.proposals:
-            if _would_exceed(spent, eval_cost.total_usd, budget):
+            if _would_exceed(spent, trial_batch_cost, budget):
                 budget_hit = True
                 break
             snapshot = _snapshot(project, proposal.target_file)
@@ -154,19 +173,25 @@ def _run(
             # only AFTER the file is restored.
             kept_this = False
             try:
-                trial = _eval_dev(project, llm, as_of=as_of, persist=False)
-                spent += trial.total_cost_usd
-                fixed, broke = _paired_delta(best, trial)
-                if fixed - broke >= min_gain:  # keep-if-it-helped (net questions past the floor)
-                    _save(paths, trial)
-                    best = trial
+                trial_runs = []
+                for _ in range(trials):
+                    t = _eval_dev(project, llm, as_of=as_of, persist=False)
+                    spent += t.total_cost_usd
+                    trial_runs.append(t)
+                decision = _judge_trials(
+                    best, trial_runs, min_gain=min_gain, require_significant=require_significant
+                )
+                if decision.keep:  # keep-if-it-helped across a majority of trials
+                    rep = decision.representative
+                    _save(paths, rep)
+                    best = rep
                     kept += 1
                     frontier.append(
                         FrontierPoint.from_run(
-                            trial,
+                            rep,
                             version=len(frontier),
-                            net_gain=fixed - broke,
-                            significant=paired_improvement_significant(fixed, broke),
+                            net_gain=decision.net_gain,
+                            significant=decision.significant,
                             proposal_title=proposal.title,
                             proposal_id=proposal.id,
                             target_file=proposal.target_file,
@@ -270,6 +295,49 @@ def _paired_delta(before: ScoredRun, after: ScoredRun) -> tuple[int, int]:
     right→wrong. The paired evidence a sign test needs, from the deterministic correct-sets."""
     b, a = before.correct_ids(), after.correct_ids()
     return len(a - b), len(b - a)
+
+
+@dataclass(frozen=True)
+class _TrialDecision:
+    """The keep/revert call for a candidate edit, aggregated across its dev-eval trials."""
+
+    keep: bool
+    representative: ScoredRun  # the trial run to record as the new best (the median sample)
+    net_gain: int
+    significant: bool
+
+
+def _judge_trials(
+    best: ScoredRun,
+    trials: list[ScoredRun],
+    *,
+    min_gain: int,
+    require_significant: bool,
+) -> _TrialDecision:
+    """Decide keep/revert for a candidate from its ``trials`` dev evals against ``best``.
+
+    Keep when a strict **majority** of trials clear ``min_gain`` net questions — so one noisy
+    re-run can't ratchet a non-improvement into the frontier, and (with ``trials=1``) the
+    behavior is exactly the old ``fixed − broke >= min_gain`` gate. The representative run is
+    the **median** trial by net gain (a stable middle sample, not the luckiest), and it decides
+    the recorded ``net_gain``/``significant``. ``require_significant`` additionally gates on the
+    representative's paired sign test."""
+    deltas = [_paired_delta(best, t) for t in trials]
+    net_gains = [f - b for f, b in deltas]
+    order = sorted(range(len(trials)), key=lambda i: net_gains[i])
+    mid = order[len(order) // 2]
+    rep_fixed, rep_broke = deltas[mid]
+    significant = paired_improvement_significant(rep_fixed, rep_broke)
+    votes = sum(1 for g in net_gains if g >= min_gain)
+    keep = votes * 2 > len(trials)
+    if require_significant:
+        keep = keep and significant
+    return _TrialDecision(
+        keep=keep,
+        representative=trials[mid],
+        net_gain=net_gains[mid],
+        significant=significant,
+    )
 
 
 # --- dev/test evals go through the sanctioned Project.eval door (never eval.heldout) --------

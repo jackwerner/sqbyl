@@ -11,6 +11,37 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-08
+
+### Added
+
+- **`columns_superset` benchmark scoring.** A benchmark question can now set
+  `match_mode: columns_superset` so a result that reproduces every gold column and row but adds
+  *extra* informative columns scores **correct** instead of landing in `manual_review`. Default
+  stays `exact` (the honest, strict bar). This also unblocks the optimizer, which credits fixes
+  off the deterministic `correct` set — a superset answer the Coach improves now counts. The
+  never-read `eval_note` field was removed (it looked load-bearing but did nothing).
+- **`sqbyl eval --trials N`.** Re-runs the eval N times and reports the accuracy spread, making
+  hosted-model inference variance (real even at temperature 0) visible so a single number isn't
+  mistaken for a ship/no-ship call. A single-trial run now also prints a one-line variance
+  caveat. Only the representative (median) run is persisted; every pass meters its real spend.
+- **`sqbyl optimize --trials N` / `--require-significant`.** `--trials` scores each candidate
+  edit N times and keeps it only when a **majority** of trials clear the gain bar (a variance
+  guard against ratcheting a noisy re-run into the frontier); `--require-significant` additionally
+  gates keeps on the paired sign test.
+- **`sqbyl coach --from-test-failure <id>`.** A sanctioned, guardrailed path from a held-out
+  test failure to a reviewed fix: it diagnoses one failure from the agent's **own trace** (its
+  gold is walled off — the diagnoser's input type has no gold field, and the module is in the
+  import-linter contract that forbids reaching `eval.heldout`), proposes a **general** context
+  edit for human review (never `--auto`, never auto-applied), stamps the proposal's held-out
+  provenance, and **quarantines** the item so its next `eval test` score is flagged as no longer
+  an independent measurement.
+- **Synonym-collision detection in `annotate`.** After the per-table draft, a `$0`, deterministic
+  pass flags synonyms that could equally describe a sibling column (the classic `cost` on
+  `cost_price` vs `unit_price`), caps the contested columns' confidence below the auto-apply
+  threshold, and surfaces a `⚠` line in `annotate` and `init` — so a contested term isn't
+  silently applied behind a clean-looking synonyms list.
+
 ## [0.3.0] — 2026-07-07
 
 ### Added

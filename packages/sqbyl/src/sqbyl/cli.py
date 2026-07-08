@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from sqbyl.project import Project
     from sqbyl_runtime.llm.base import Usage
     from sqbyl_runtime.models import TableSemantics
+    from sqbyl_runtime.state.layout import SqbylPaths
 
 
 def _schema_export(args: list[str]) -> int:
@@ -451,10 +452,11 @@ def _optimize(args: list[str]) -> int:
         return 2
     budget, auto, dry_run = budget_parse
     target_opt, rounds_opt = _opt(args, "target"), _opt(args, "max-rounds")
-    gain_opt = _opt(args, "min-gain")
+    gain_opt, trials_opt = _opt(args, "min-gain"), _opt(args, "trials")
+    require_significant = "--require-significant" in args
     replay, record = _opt(args, "replay"), _opt(args, "record")
     as_json = "--json" in args
-    consumed = {target_opt, rounds_opt, gain_opt, replay, record}
+    consumed = {target_opt, rounds_opt, gain_opt, trials_opt, replay, record}
     positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
 
@@ -466,9 +468,10 @@ def _optimize(args: list[str]) -> int:
     target = float(target_opt) if target_opt else project.manifest.defaults.readiness_target
     max_rounds = int(rounds_opt) if rounds_opt else 10
     min_gain = int(gain_opt) if gain_opt else 1
+    trials = max(1, int(trials_opt)) if trials_opt else 1
     dev_n = dev_set_size(project)
 
-    _print_optimize_estimate(project, dev_n, budget, dry_run=dry_run)
+    _print_optimize_estimate(project, dev_n, budget, trials=trials, dry_run=dry_run)
     if dry_run:
         return 0
     # An unattended, multi-round spend that MUTATES the working tree — get consent up front, not
@@ -481,7 +484,14 @@ def _optimize(args: list[str]) -> int:
 
     client = build_llm_client(project.manifest, replay=replay, record=record)
     result = optimize(
-        project, llm=client, target=target, budget=budget, min_gain=min_gain, max_rounds=max_rounds
+        project,
+        llm=client,
+        target=target,
+        budget=budget,
+        min_gain=min_gain,
+        max_rounds=max_rounds,
+        trials=trials,
+        require_significant=require_significant,
     )
 
     if as_json:
@@ -491,7 +501,7 @@ def _optimize(args: list[str]) -> int:
 
 
 def _print_optimize_estimate(
-    project: Project, dev_n: int, budget: float | None, *, dry_run: bool
+    project: Project, dev_n: int, budget: float | None, *, trials: int = 1, dry_run: bool
 ) -> None:
     from sqbyl.estimates import coach_estimate, eval_estimate
 
@@ -500,9 +510,15 @@ def _print_optimize_estimate(
     per_eval = eval_estimate(agent_model, questions=dev_n).total_usd
     per_coach = coach_estimate(coach_model, failures=dev_n).total_usd
     header = "dry run — no API calls" if dry_run else "estimated spend before you start"
+    # Each candidate edit is scored ``trials`` times (variance control), so the per-round trial
+    # eval cost scales with it — reflect that in the up-front quote (invariant 5).
+    trial_note = f" ×{trials} trial(s)" if trials > 1 else ""
     print(f"▸ optimize ({header}):\n")
     print(f"  baseline dev eval    ~${per_eval:.4f} ({dev_n} question(s))")
-    print(f"  each round           ≈ coach ~${per_coach:.4f} + trial dev eval(s) ~${per_eval:.4f}")
+    print(
+        f"  each round           ≈ coach ~${per_coach:.4f} + trial dev eval(s) "
+        f"~${per_eval * trials:.4f}{trial_note}"
+    )
     print(f"  final held-out eval  ~${per_eval:.4f} (scored once on the picked version)")
     cap = f"${budget:.2f}" if budget is not None else "(none)"
     print(f"\n  the loop hard-stops before any step would exceed --budget {cap}")
@@ -776,8 +792,48 @@ def _print_eval_row(run: ScoredRun, row: QuestionResult) -> None:
             print(f"    · {j.judge}: {call} ({j.confidence:.0%}) — {j.rationale}")
 
 
+def _eval_trials(
+    project: Project,
+    split: str,
+    trials: int,
+    *,
+    replay: str | None,
+    record: str | None,
+    as_of: datetime | None,
+) -> ScoredRun:
+    """Run the eval ``trials`` times to expose hosted-model variance (finding #4).
+
+    Every pass meters its real spend; only the **representative** (median-accuracy) run is
+    persisted, so re-running for variance doesn't inflate the runs history or the held-out
+    "scored N times" counter. Prints the accuracy spread across trials, then returns the
+    representative run for the usual per-run report.
+    """
+    from sqbyl.eval.report import save_run
+    from sqbyl_runtime.state.layout import SqbylPaths
+
+    runs = [
+        project.eval(split, replay=replay, record=record, as_of=as_of, persist=False)
+        for _ in range(trials)
+    ]
+    accs = sorted(r.accuracy for r in runs)
+    lo, hi, mean = accs[0], accs[-1], sum(accs) / len(accs)
+    each = ", ".join(f"{a:.0%}" for a in accs)
+    print(
+        f"\n▸ {trials} trials — accuracy {lo:.1%}–{hi:.1%} (mean {mean:.1%}, "
+        f"spread {hi - lo:.1%}) · runs: {each}"
+    )
+    print(
+        "  hosted inference is nondeterministic even at temperature 0; the representative "
+        "(median) run is reported below."
+    )
+    order = sorted(range(len(runs)), key=lambda i: runs[i].accuracy)
+    representative = runs[order[len(order) // 2]]
+    save_run(SqbylPaths(project.root).ensure(), representative)
+    return representative
+
+
 def _eval(args: list[str]) -> int:
-    """`sqbyl eval [dev|test] [DIR] [--replay P] [--record P] [--as-of ISO]`.
+    """`sqbyl eval [dev|test] [DIR] [--replay P] [--record P] [--as-of ISO] [--trials N]`.
 
     Runs each question as a fresh, stateless ``ask()``, scores it with the Layer-1
     deterministic scorers, prints per-run aggregates (accuracy with a 95% interval /
@@ -812,7 +868,9 @@ def _eval(args: list[str]) -> int:
         return 2
     budget, auto, dry_run = budget_parse
     replay, record, as_of_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "as-of")
-    consumed = {replay, record, as_of_opt}
+    trials_opt = _opt(args, "trials")
+    trials = max(1, int(trials_opt)) if trials_opt else 1
+    consumed = {replay, record, as_of_opt, trials_opt}
     positional = _positionals(args, consumed)
     split_arg = "dev"
     if positional and positional[0] in ("dev", "test"):
@@ -869,8 +927,12 @@ def _eval(args: list[str]) -> int:
         judge_model=judge_model,
         self_repair_attempts=project.manifest.defaults.self_repair_attempts,
     )
+    # ``--trials N`` re-runs the whole eval N times to expose hosted-model variance, so the
+    # up-front estimate and the budget gate cover all N passes (invariant 5).
+    total_estimate = estimate.total_usd * trials
     if dry_run:
-        print(f"▸ eval {split.value} (dry run — no API calls):\n\n{estimate.render()}")
+        trials_line = f"\n\n(×{trials} trials → ~${total_estimate:.4f} total)" if trials > 1 else ""
+        print(f"▸ eval {split.value} (dry run — no API calls):\n\n{estimate.render()}{trials_line}")
         return 0
     judge_note = (
         " (agent + a bounded judge allowance per review-pile row, all metered live)"
@@ -878,27 +940,29 @@ def _eval(args: list[str]) -> int:
         else ""
     )
     cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    trials_note = f" ×{trials} trials" if trials > 1 else ""
     print(
-        f"▸ eval {split.value} — {len(questions)} question(s) on {model}, "
-        f"estimated ~${estimate.total_usd:.4f} (paid){judge_note}{cap}"
+        f"▸ eval {split.value} — {len(questions)} question(s) on {model}{trials_note}, "
+        f"estimated ~${total_estimate:.4f} (paid){judge_note}{cap}"
     )
     # A bounded single pass: gate on the whole-run estimate up front. Auto hard-stops;
     # guided asks. (Live mid-run capping arrives with the orchestrated `init`, Phase 7.2.)
-    if budget is not None and estimate.total_usd > budget + 1e-9:
+    if budget is not None and total_estimate > budget + 1e-9:
         if auto:
-            print(
-                f"  ✗ estimate ~${estimate.total_usd:.4f} exceeds budget ${budget:.2f} — stopping"
-            )
+            print(f"  ✗ estimate ~${total_estimate:.4f} exceeds budget ${budget:.2f} — stopping")
             return 1
         answer = input(
-            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            f"  ⏸ estimate ~${total_estimate:.4f} exceeds the ${budget:.2f} budget. "
             "Proceed anyway? [y/N] "
         )
         if not answer.strip().lower().startswith("y"):
             print("  aborted — nothing spent")
             return 1
 
-    run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
+    if trials > 1:
+        run = _eval_trials(project, split.value, trials, replay=replay, record=record, as_of=as_of)
+    else:
+        run = project.eval(split.value, replay=replay, record=record, as_of=as_of)
 
     # Headline accuracy is DETERMINISTIC only — the truth users report upstream. The judge
     # is advisory and never moves this number (see spec §7 / the review pile below).
@@ -908,6 +972,25 @@ def _eval(args: list[str]) -> int:
         f", 95% CI {lo:.0%}–{hi:.0%})"
         f" · needs review: {run.n_manual_review} · errors: {run.n_error}"
     )
+    # Under replay the run is deterministic; live, it isn't. Be honest that a bare re-run can
+    # land elsewhere in this interval, so a single number isn't a ship/no-ship call on its own.
+    if replay is None and trials == 1:
+        print(
+            "  note: hosted inference is nondeterministic even at temperature 0 — a re-run can "
+            "land elsewhere in this interval; use `--trials N` to see the spread."
+        )
+    if split is Split.test:
+        # A held-out item a human inspected to derive a coach fix (finding #3) is no longer an
+        # independent measurement — surface that its score here is compromised.
+        from sqbyl.coach_heldout import quarantined_ids
+
+        tainted = quarantined_ids(paths) & {r.id for r in run.results}
+        if tainted:
+            print(
+                f"  ⚠ {len(tainted)} scored item(s) QUARANTINED ({', '.join(sorted(tainted))}) — a "
+                "fix was derived from inspecting them, so their result here is not an independent "
+                "measure of generalization (finding #3)."
+            )
     if run.n_manual_review:
         # Advisory triage: how the judge thinks the review pile splits (never scored).
         likely_ok = run.n_suggested(Verdict.correct)
@@ -1098,13 +1181,28 @@ def _coach(args: list[str]) -> int:
     budget, auto, dry_run = budget_parse
     regenerate = "--regenerate" in args
     replay, record, model_opt = _opt(args, "replay"), _opt(args, "record"), _opt(args, "model")
-    consumed = {replay, record, model_opt}
+    from_test = _opt(args, "from-test-failure")
+    consumed = {replay, record, model_opt, from_test}
     positional = _positionals(args, consumed)
     project = Project.load(positional[0] if positional else ".")
     # `--model` redirects the coach role, but an explicit `coach_model` pin in sqbyl.yaml wins.
     model = project.manifest.model.for_role("coach", override=model_opt)
 
     paths = SqbylPaths(project.root)
+    if from_test is not None:
+        # The guardrailed held-out path (finding #3): diagnose ONE test failure from the agent's
+        # trace only, never its gold; human-review-only; provenance-stamped + score quarantined.
+        return _coach_from_test_failure(
+            project,
+            paths,
+            from_test,
+            budget=budget,
+            auto=auto,
+            dry_run=dry_run,
+            replay=replay,
+            record=record,
+            model=model,
+        )
     run = latest_run(paths, split="dev")
     failures = gather_failures(run) if run is not None else []
 
@@ -1172,6 +1270,107 @@ def _coach(args: list[str]) -> int:
     return 0
 
 
+def _coach_from_test_failure(
+    project: Project,
+    paths: SqbylPaths,
+    failure_id: str,
+    *,
+    budget: float | None,
+    auto: bool,
+    dry_run: bool,
+    replay: str | None,
+    record: str | None,
+    model: str,
+) -> int:
+    """`sqbyl coach --from-test-failure <id>` — the guardrailed held-out diagnosis (finding #3).
+
+    Diagnoses ONE held-out failure from the agent's own trace (never the gold), proposes a
+    GENERAL context edit for human review, stamps its provenance, and quarantines the item's
+    score. Human-review-only: it refuses ``--auto`` and never applies anything itself.
+    """
+    from sqbyl.coach import save_report
+    from sqbyl.coach_heldout import HeldoutFailure, coach_heldout_failure, record_quarantine
+    from sqbyl.estimates import coach_estimate
+    from sqbyl.eval.report import latest_run
+    from sqbyl.llm import build_llm_client
+    from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
+
+    if dry_run:
+        rendered = coach_estimate(model, failures=1).render()
+        print(f"▸ coach --from-test-failure (dry run — no API calls):\n\n{rendered}")
+        return 0
+    # Inspecting a held-out row to derive a fix is a judgement a human must own (invariant 3):
+    # it compromises that item's independence, so it can never run unattended.
+    if auto:
+        print(
+            "coach --from-test-failure is human-review-only and refuses --auto — inspecting a "
+            "held-out failure to derive a fix is a decision a human must make (finding #3)."
+        )
+        return 2
+
+    test_run = latest_run(paths, split="test")
+    if test_run is None:
+        print("no held-out test run yet — run `sqbyl eval test` first, then coach a failure by id")
+        return 1
+    row = next((r for r in test_run.results if r.id == failure_id), None)
+    if row is None:
+        failing = ", ".join(r.id for r in test_run.results if not r.resolved_correct)
+        print(
+            f"no test question {failure_id!r} in the latest test run "
+            f"({test_run.run_id[:8]}). Failing ids: {failing or '(none)'}"
+        )
+        return 1
+    if row.resolved_correct:
+        print(f"test question {failure_id!r} passed in the latest run — nothing to diagnose.")
+        return 0
+
+    estimate = coach_estimate(model, failures=1)
+    cap = f" · budget ${budget:.2f}" if budget is not None else ""
+    print(
+        f"▸ coach held-out failure {failure_id!r} on {model} — "
+        f"estimated ~${estimate.total_usd:.4f} (paid){cap}"
+    )
+    print(
+        "  the gold answer is withheld from the Coach; the fix must be a GENERAL edit you "
+        "review before applying (never a special-case for this one question)."
+    )
+    if budget is not None and estimate.total_usd > budget + 1e-9:
+        answer = input(
+            f"  ⏸ estimate ~${estimate.total_usd:.4f} exceeds the ${budget:.2f} budget. "
+            "Proceed anyway? [y/N] "
+        )
+        if not answer.strip().lower().startswith("y"):
+            print("  aborted — nothing spent (raise --budget)")
+            return 1
+
+    llm = build_llm_client(project.manifest, replay=replay, record=record)
+    failure = HeldoutFailure.from_question_result(row)
+    report = coach_heldout_failure(
+        project,
+        failure,
+        llm=llm,
+        model=model,
+        trace_writer=TraceWriter(paths.ensure().traces_dir / "coach.jsonl"),
+    )
+    spent = _meter(
+        project, report.usage, model=model, command="coach", role="coach", run_id=new_trace_id()
+    )
+    save_report(paths, report)
+    # Guardrail 3: the moment a human inspected this held-out row to derive a fix, its score is
+    # no longer an independent measurement — record that, and say it plainly.
+    record_quarantine(
+        paths, failure_id, reason="inspected to derive a coach fix (coach --from-test-failure)"
+    )
+    print(
+        f"\n⚠ held-out item {failure_id!r} is now QUARANTINED — its next `eval test` score is no "
+        "longer an independent measure of generalization. The proposal below was derived ONLY "
+        "from the agent's trace (never the gold); review it with `git diff` before "
+        "`sqbyl coach apply`."
+    )
+    _print_coach_report(report, spent=spent)
+    return 0
+
+
 def _print_coach_report(
     report: CoachReport, *, spent: float | None = None, unresolved: int = 0
 ) -> None:
@@ -1197,6 +1396,11 @@ def _print_coach_report(
             else ""
         )
         print(f"[{i}] {p.title}   → {p.target_file}{flag}")
+        if p.derived_from_heldout is not None:
+            print(
+                f"    ⚑ derived from held-out failure {p.derived_from_heldout!r} — must be a "
+                "GENERAL fix (reject if it only special-cases it); its item is quarantined"
+            )
         # predicted_fixes / confidence are the model's OWN unvalidated guesses (ml-systems):
         # label them as such, not as a measured, calibrated leverage score.
         print(
@@ -1304,7 +1508,7 @@ def _annotate(args: list[str]) -> int:
     at ``--budget`` (the full guided/--auto budget machinery is Phase 7): once the
     metered total reaches the cap, remaining tables are left for a later run.
     """
-    from sqbyl.annotate import annotate_table
+    from sqbyl.annotate import annotate_table, flag_synonym_collisions
     from sqbyl.estimates import annotate_estimate
     from sqbyl.llm import build_llm_client
     from sqbyl.project import Project
@@ -1372,10 +1576,15 @@ def _annotate(args: list[str]) -> int:
                 trace_id=run_span.trace_id,
                 parent_span_id=run_span.span_id,
             )
+            # $0 pass: flag synonyms that could equally describe a sibling column and cap their
+            # confidence so a contested term isn't silently auto-applied (finding #2).
+            annotation, collisions = flag_synonym_collisions(annotation)
             dump_yaml_path(merge_annotation(raw, annotation), path)
             meter.record(response.usage, model=model, role="annotator", run_id=run_span.trace_id)
             done += 1
             print(f"  ✓ {path.name}  (table confidence {annotation.confidence:.2f})")
+            for collision in collisions:
+                print(f"    ⚠ {collision.describe()}")
         spent = meter.spent
     trace_writer.write(run_span.end(status="ok" if not stopped else "error"))
     print(f"done — annotated {done}/{len(paths)}, metered ${spent:.4f}")
@@ -1621,6 +1830,8 @@ def _report_init_arrival(result: EnrichmentResult) -> int:
         print(f"  ✓ annotated {result.annotated} table(s)")
     for label, err in result.annotate_failures:
         print(f"  ⚠ {label}: {err.splitlines()[0]} (surfaced as a card)")
+    for collision in result.synonym_collisions:
+        print(f"  ⚠ {collision}")
     if result.survivors:
         # Be explicit that this is an automatic, reversible action on machine-authored gold —
         # the human confirms (or edits) it in `sqbyl review`; nothing here is final.

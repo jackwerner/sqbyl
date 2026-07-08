@@ -90,6 +90,11 @@ class CoachProposal(SqbylModel):
     # Stamped by `coach apply` once written, so a re-apply is caught (an empty-`find` append
     # would otherwise silently duplicate the edit) and the audit trail records what was applied.
     applied_at: datetime | None = None
+    # Provenance for a proposal diagnosed from a *held-out* test failure (finding #3): the test
+    # question's id. Set only on the guardrailed `coach --from-test-failure` path — it means the
+    # edit was informed by inspecting a held-out row (never its gold), so a reviewer knows the
+    # item's next test score is no longer an independent measurement. ``None`` on the dev loop.
+    derived_from_heldout: str | None = None
 
     def render_diff(self) -> str:
         """A human-readable diff derived from the edits (display only — apply uses the edits).
