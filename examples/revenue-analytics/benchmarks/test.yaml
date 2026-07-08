@@ -4,7 +4,6 @@
   question: What is the average order amount in dollars?
   gold_sql: |
     SELECT AVG(amount_cents)/100.0 AS avg_order_value FROM analytics.orders;
-  eval_note: "Average across all orders, in dollars."
   difficulty: medium
   tags: [orders, average]
 

@@ -65,6 +65,19 @@ The headline number is **always the held-out one**, with the dev score shown bes
 the gap is visible. Optimizing and measuring on the same set is training on the test set;
 sqbyl makes that mistake hard to commit.
 
+There is one **narrow, guardrailed exception** for when the held-out set surfaces a genuine
+failure you want help fixing: `sqbyl coach --from-test-failure <id>`. It never sees the test
+question's gold answer — the diagnosis runs only from the agent's *own trace* (the question, the
+SQL it wrote, its plan, any error), and that wall is structural (the diagnoser's input type has
+no gold field, and the module is in the same import-linter contract that forbids reading the
+held-out set). It proposes a **general** context edit — one that should help other, unseen
+questions too, not a one-off patch for that question — for you to review by hand; it never runs
+under `--auto` and never applies anything itself. And once you've inspected an item this way, its
+score is **quarantined**: the next `eval test` flags it as no longer an independent measurement,
+because a human peeked at it. The net effect: a real failure gets a supervised path to a fix
+without the answer key ever entering the loop, and the honesty of the held-out number is
+preserved (a fix that truly generalizes still shows up on the *rest* of the untouched test set).
+
 ## The context hierarchy: examples > semantics > prose
 
 The agent's accuracy ceiling is set by metadata and examples; free-text instructions are the

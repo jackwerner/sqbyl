@@ -11,7 +11,7 @@ from sqbyl.models.attention import (
     DecisionKind,
     ReadinessSignal,
 )
-from sqbyl.models.benchmarks import BenchmarkQuestion
+from sqbyl.models.benchmarks import BenchmarkQuestion, MatchMode
 from sqbyl.models.candidates import (
     EVIDENCE_ROW_CAP,
     Candidate,
@@ -87,6 +87,7 @@ __all__ = [
     "AttentionQueue",
     "AutomationConfig",
     "BenchmarkQuestion",
+    "MatchMode",
     "Decision",
     "DecisionKind",
     "CalibrationRecord",

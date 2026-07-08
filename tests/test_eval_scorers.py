@@ -168,6 +168,36 @@ def test_score_question_mismatch_routes_to_manual_review(db: Database) -> None:
     assert verdict is Verdict.manual_review
 
 
+def test_score_question_superset_mode_credits_extra_columns(db: Database) -> None:
+    # Gold asks for the distinct statuses; the agent returns them WITH a count column.
+    # In exact mode that mismatch is manual_review; in columns_superset it's correct.
+    from sqbyl.models.benchmarks import MatchMode
+
+    gold = f"SELECT DISTINCT status FROM {_ORDERS}"
+    generated = f"SELECT status, COUNT(*) AS n FROM {_ORDERS} GROUP BY status"
+
+    exact_verdict, _ = score_question(
+        db,
+        generated_sql=generated,
+        produced_executable_sql=True,
+        used_assets=[],
+        gold_sql=gold,
+        dialect=Dialect.duckdb,
+    )
+    assert exact_verdict is Verdict.manual_review
+
+    superset_verdict, _ = score_question(
+        db,
+        generated_sql=generated,
+        produced_executable_sql=True,
+        used_assets=[],
+        gold_sql=gold,
+        dialect=Dialect.duckdb,
+        match_mode=MatchMode.columns_superset,
+    )
+    assert superset_verdict is Verdict.correct
+
+
 def test_score_question_error_when_no_executable_sql(db: Database) -> None:
     verdict, _ = score_question(
         db,

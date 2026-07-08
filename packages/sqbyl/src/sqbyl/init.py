@@ -423,6 +423,9 @@ class EnrichmentResult:
 
     annotated: int = 0
     annotate_failures: list[tuple[str, str]] = field(default_factory=list)
+    # Human-readable synonym-collision warnings from the annotate wave (finding #2): a term one
+    # column's synonyms share with a sibling, which the per-table draft can't see.
+    synonym_collisions: list[str] = field(default_factory=list)
     survivors: int = 0
     run: ScoredRun | None = None
     coach_report: CoachReport | None = None
@@ -446,7 +449,7 @@ def _annotate_wave(
     unit is then metered durably to ``.sqbyl/usage.db`` via the shared meter. A table that
     fails to annotate degrades to a card (its siblings still complete) — spec §5.5.
     """
-    from sqbyl.annotate import annotate_table
+    from sqbyl.annotate import annotate_table, flag_synonym_collisions
     from sqbyl.orchestrator import WorkProduct, WorkUnit
     from sqbyl.yamlio import load_yaml
     from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
@@ -464,6 +467,9 @@ def _annotate_wave(
             annotation, response = annotate_table(
                 llm, table, model=model, trace_writer=trace_writer, trace_id=new_trace_id()
             )
+            # Cap contested synonyms' confidence so they can't auto-apply (finding #2); the
+            # collisions themselves are surfaced post-wave (this runs in a worker thread).
+            annotation, _ = flag_synonym_collisions(annotation)
             dump_yaml_path(merge_annotation(raw, annotation), path)
             return WorkProduct(value=path, usage=response.usage, confidence=annotation.confidence)
 
@@ -490,6 +496,27 @@ def _annotate_wave(
         elif outcome.status.value == "failed":
             failures.append((outcome.unit.label, outcome.error or "unknown error"))
     return annotated, failures, result
+
+
+def _gather_synonym_collisions(project: Project, annotate_tables: list[str]) -> list[str]:
+    """Re-scan the just-annotated semantics files for contested synonyms (finding #2).
+
+    Runs after the parallel wave (so it's off the worker threads), on the persisted files, and
+    returns human-readable warnings prefixed with the table filename. $0 and deterministic."""
+    from sqbyl.annotate import detect_semantics_collisions
+    from sqbyl.yamlio import load_yaml
+
+    messages: list[str] = []
+    for name in annotate_tables:
+        path = project.semantics_dir / name
+        if not path.exists():
+            continue
+        try:
+            table = TableSemantics.model_validate(load_yaml(path.read_text()))
+        except Exception:  # noqa: BLE001 — a malformed file is surfaced elsewhere; don't crash here
+            continue
+        messages.extend(f"{name}: {c.describe()}" for c in detect_semantics_collisions(table))
+    return messages
 
 
 def enrich(
@@ -529,6 +556,7 @@ def enrich(
         )
         result.annotated = annotated
         result.annotate_failures = failures
+        result.synonym_collisions = _gather_synonym_collisions(project, plan.annotate_tables)
         # The orchestrator's own budget gate can leave later tables `skipped` — that's a
         # budget stop mid-wave, so halt the run (don't press on to synth/eval on a dry budget)
         # and flag it so the "re-run to continue" hint fires.
