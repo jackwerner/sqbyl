@@ -919,6 +919,18 @@ can't leak into the test judge.</p>
 <p>The headline number is <strong>always the held-out one</strong>, with the dev score shown beside it so
 the gap is visible. Optimizing and measuring on the same set is training on the test set;
 sqbyl makes that mistake hard to commit.</p>
+<p>There is one <strong>narrow, guardrailed exception</strong> for when the held-out set surfaces a genuine
+failure you want help fixing: <code>sqbyl coach --from-test-failure &lt;id&gt;</code>. It never sees the test
+question's gold answer — the diagnosis runs only from the agent's <em>own trace</em> (the question, the
+SQL it wrote, its plan, any error), and that wall is structural (the diagnoser's input type has
+no gold field, and the module is in the same import-linter contract that forbids reading the
+held-out set). It proposes a <strong>general</strong> context edit — one that should help other, unseen
+questions too, not a one-off patch for that question — for you to review by hand; it never runs
+under <code>--auto</code> and never applies anything itself. And once you've inspected an item this way, its
+score is <strong>quarantined</strong>: the next <code>eval test</code> flags it as no longer an independent measurement,
+because a human peeked at it. The net effect: a real failure gets a supervised path to a fix
+without the answer key ever entering the loop, and the honesty of the held-out number is
+preserved (a fix that truly generalizes still shows up on the <em>rest</em> of the untouched test set).</p>
 <h2 id="the-context-hierarchy-examples-semantics-prose">The context hierarchy: examples &gt; semantics &gt; prose<a class="headerlink" href="#the-context-hierarchy-examples-semantics-prose" title="Permanent link">&para;</a></h2>
 <p>The agent's accuracy ceiling is set by metadata and examples; free-text instructions are the
 last resort. Both the context compiler and the Coach bake in this hierarchy — the Coach
