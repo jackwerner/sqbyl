@@ -11,11 +11,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import PurePosixPath
 
 from pydantic import Field
 
 from sqbyl_runtime.llm.base import Usage
 from sqbyl_runtime.models import SqbylModel
+
+# The one global-prose file (spec §8). "Is this edit prose?" is a fact about *where it writes*,
+# not about the layer the model self-reported — so `is_prose` derives from `target_file`.
+PROSE_FILE = "instructions.md"
 
 
 class CoachLayer(StrEnum):
@@ -46,7 +51,6 @@ LAYER_PREFERENCE: tuple[CoachLayer, ...] = (
     CoachLayer.table_description,
     CoachLayer.instruction,
 )
-PROSE_LAYERS: frozenset[CoachLayer] = frozenset({CoachLayer.instruction})
 
 
 class CoachEdit(SqbylModel):
@@ -110,8 +114,15 @@ class CoachProposal(SqbylModel):
 
     @property
     def is_prose(self) -> bool:
-        """True when the edit is a global prose rule — the last-resort layer to prefer against."""
-        return self.layer in PROSE_LAYERS
+        """True when the edit actually writes the global-prose file (``instructions.md``).
+
+        Derived from ``target_file`` — the thing that gets written — not the model's self-reported
+        ``layer``. The model sometimes mislabels a well-targeted structured edit (a real
+        ``semantics/*.yaml`` column change) as ``layer=instruction``; trusting that stamped the
+        edit with the "⚠ global prose — last resort" flag a reviewer is trained to skip, and
+        force-routed it to human review (finding UX). Whatever the model called the layer, an edit
+        that doesn't touch ``instructions.md`` is not prose."""
+        return PurePosixPath(self.target_file).name == PROSE_FILE
 
     @property
     def memorization_risk(self) -> bool:

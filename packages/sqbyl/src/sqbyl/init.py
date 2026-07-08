@@ -469,7 +469,7 @@ def _annotate_wave(
             )
             # Cap contested synonyms' confidence so they can't auto-apply (finding #2); the
             # collisions themselves are surfaced post-wave (this runs in a worker thread).
-            annotation, _ = flag_synonym_collisions(annotation)
+            annotation, _ = flag_synonym_collisions(annotation, table_name=table.table)
             dump_yaml_path(merge_annotation(raw, annotation), path)
             return WorkProduct(value=path, usage=response.usage, confidence=annotation.confidence)
 

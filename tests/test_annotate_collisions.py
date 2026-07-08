@@ -95,3 +95,61 @@ def test_detect_semantics_collisions_on_a_written_table() -> None:
     )
     tokens = {c.token for c in detect_semantics_collisions(table)}
     assert "price" in tokens
+
+
+def test_table_name_root_is_not_a_collision() -> None:
+    # The noise case (UX finding #2): every column in an orders table naturally shares the
+    # entity root "order" — order_id's "order number", order_date's "order date". That's the
+    # table's subject, not a real ambiguity, so it must not be flagged (de-pluralized too).
+    table = TableSemantics(
+        table="analytics.orders",
+        columns=[
+            Column(name="order_id", type="bigint", synonyms=["order number", "order identifier"]),
+            Column(name="order_date", type="date", synonyms=["order date", "date ordered"]),
+        ],
+    )
+    assert detect_semantics_collisions(table) == []
+
+
+def test_topical_root_excluded_but_real_contest_survives() -> None:
+    # "product" is topical (the table's own entity) and must be dropped; "price" is a genuine
+    # contest between two sibling price columns and must survive — the signal, not the noise.
+    table = TableSemantics(
+        table="analytics.products",
+        columns=[
+            Column(name="product_id", type="bigint", synonyms=["product identifier"]),
+            Column(name="product_name", type="text", synonyms=["product", "name"]),
+            Column(name="cost_price", type="numeric", synonyms=["cost", "purchase price"]),
+            Column(name="unit_price", type="numeric", synonyms=["price", "sale price"]),
+        ],
+    )
+    tokens = {c.token for c in detect_semantics_collisions(table)}
+    assert "product" not in tokens  # topical, dropped
+    assert tokens == {"price"}  # only the real contest remains
+
+
+def test_identifier_is_a_generic_id_word_not_a_collision() -> None:
+    # Two ID columns both carrying "...identifier" synonyms shouldn't collide on it — it's the
+    # long form of the already-excluded "id", never the disambiguation a human needs.
+    table = TableSemantics(
+        table="analytics.line_items",
+        columns=[
+            Column(name="order_id", type="bigint", synonyms=["order identifier"]),
+            Column(name="product_id", type="bigint", synonyms=["product identifier"]),
+        ],
+    )
+    tokens = {c.token for c in detect_semantics_collisions(table)}
+    assert "identifier" not in tokens
+
+
+def test_detect_synonym_collisions_excludes_topical_when_given_the_table_name() -> None:
+    # The draft-time entry point (the annotation object has no table name) takes it explicitly.
+    annotation = _annotation(
+        [
+            _col("order_id", ["order number"]),
+            _col("order_date", ["order date"]),
+        ]
+    )
+    assert detect_synonym_collisions(annotation, table_name="orders") == []
+    # Without the name it can't know "order" is topical, so it still flags it (backward-compatible).
+    assert any(c.token == "order" for c in detect_synonym_collisions(annotation))
