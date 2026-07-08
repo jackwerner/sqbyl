@@ -13,6 +13,7 @@ copyright: Copyright &copy; Jack Werner — MIT licensed
 
 theme:
   name: material
+  custom_dir: overrides
   logo: assets/sqbyl-icon.png
   favicon: assets/sqbyl-icon.png
   icon:
@@ -77,6 +78,7 @@ extra:
 nav:
   - Home: index.md
   - Getting started: getting-started.md
+  - "Case study: 70% → 96%": case-study.md
   - Concepts: concepts.md
   - Guides:
       - Embedding the runtime: guides/embedding.md

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+<!--
+  Emit Open Graph + Twitter card meta on every page so links shared to
+  HN / Reddit / Slack / X render a title, description, and the sqbyl logo.
+  Done as a template override (rather than the social plugin) to avoid the
+  cairo/pango system dependency in CI.
+-->
+{% block extrahead %}
+  {% if page and page.is_homepage %}
+    {% set og_title = config.site_name %}
+  {% elif page and page.title %}
+    {% set og_title = page.title ~ " · " ~ config.site_name %}
+  {% else %}
+    {% set og_title = config.site_name %}
+  {% endif %}
+  {% set og_description = page.meta.description if page and page.meta and page.meta.description else config.site_description %}
+  {% set og_image = config.site_url ~ "assets/sqbyl-logo-original.png" %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ config.site_name }}">
+  <meta property="og:title" content="{{ og_title }}">
+  <meta property="og:description" content="{{ og_description }}">
+  <meta property="og:url" content="{{ page.canonical_url }}">
+  <meta property="og:image" content="{{ og_image }}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ og_title }}">
+  <meta name="twitter:description" content="{{ og_description }}">
+  <meta name="twitter:image" content="{{ og_image }}">
+{% endblock %}

@@ -49,12 +49,19 @@ that loop produces is one you can actually **report to stakeholders and defend**
   survives scrutiny, not a benchmark you overfit.
   [Read why →](concepts.md#defensible-measurement)
 
+!!! tip "See it on a real database"
+    In a first-pass setup, one small model (Claude Haiku 4.5) went from **70.2% to 96.5%**
+    accuracy — held-out set included — behind sqbyl's governed semantic layer, for about
+    two cents. [Read the case study →](case-study.md)
+
 ## Where to next
 
 <div class="grid cards" markdown>
 
 - :material-rocket-launch: **[Getting started](getting-started.md)** — install, connect a
   database, run the guided setup, and ship your first release.
+- :material-chart-line: **[Case study](case-study.md)** — 70% → 96.5% on a live Postgres
+  database with one small model, held-out set and unit economics included.
 - :material-lightbulb-on: **[Concepts](concepts.md)** — the loop, dev/test discipline,
   defensible measurement, and the two-package architecture.
 - :material-server: **[Embedding the runtime](guides/embedding.md)** — put a release behind
