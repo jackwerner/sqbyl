@@ -6,19 +6,19 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.">
+        <meta name="description" content="One small LLM (Claude Haiku 4.5) went from 70.2% to 96.5% accuracy on business questions — held-out set included — by putting sqbyl's governed semantic layer between the model and a Postgres database. Same model, same data, honest numbers.">
       
       
         <meta name="author" content="Jack Werner">
       
       
-        <link rel="canonical" href="https://jackwerner.github.io/sqbyl/getting-started/">
+        <link rel="canonical" href="https://jackwerner.github.io/sqbyl/case-study/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../getting-started/">
       
       
-        <link rel="next" href="../case-study/">
+        <link rel="next" href="../concepts/">
       
       
         
@@ -29,7 +29,7 @@
     
     
       
-        <title>Getting started - sqbyl</title>
+        <title>Case study: 70% to 96% text-to-SQL accuracy - sqbyl</title>
       
     
     
@@ -70,13 +70,13 @@
   
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="sqbyl">
-  <meta property="og:title" content="Getting started · sqbyl">
-  <meta property="og:description" content="An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.">
-  <meta property="og:url" content="https://jackwerner.github.io/sqbyl/getting-started/">
+  <meta property="og:title" content="Case study: 70% → 96% · sqbyl">
+  <meta property="og:description" content="One small LLM (Claude Haiku 4.5) went from 70.2% to 96.5% accuracy on business questions — held-out set included — by putting sqbyl's governed semantic layer between the model and a Postgres database. Same model, same data, honest numbers.">
+  <meta property="og:url" content="https://jackwerner.github.io/sqbyl/case-study/">
   <meta property="og:image" content="https://jackwerner.github.io/sqbyl/assets/sqbyl-logo-original.png">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Getting started · sqbyl">
-  <meta name="twitter:description" content="An open-source, LLM-powered toolkit for building, evaluating, and iterating on text-to-SQL agents over your own database.">
+  <meta name="twitter:title" content="Case study: 70% → 96% · sqbyl">
+  <meta name="twitter:description" content="One small LLM (Claude Haiku 4.5) went from 70.2% to 96.5% accuracy on business questions — held-out set included — by putting sqbyl's governed semantic layer between the model and a Postgres database. Same model, same data, honest numbers.">
   <meta name="twitter:image" content="https://jackwerner.github.io/sqbyl/assets/sqbyl-logo-original.png">
 
   </head>
@@ -98,7 +98,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#getting-started" class="md-skip">
+        <a href="#from-70-to-96-production-grade-text-to-sql-set-up-in-minutes" class="md-skip">
           Skip to content
         </a>
       
@@ -133,7 +133,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Getting started
+              Case study: 70% to 96% text-to-SQL accuracy
             
           </span>
         </div>
@@ -304,6 +304,33 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -323,7 +350,7 @@
   <span class="md-ellipsis">
     
   
-    Getting started
+    Case study: 70% → 96%
   
 
     
@@ -341,7 +368,7 @@
   <span class="md-ellipsis">
     
   
-    Getting started
+    Case study: 70% → 96%
   
 
     
@@ -367,10 +394,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#the-result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Install
+        The result
       
     </span>
   </a>
@@ -378,10 +405,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quickstart" class="md-nav__link">
+  <a href="#the-problem-with-the-two-usual-options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quickstart
+        The problem with the two usual options
       
     </span>
   </a>
@@ -389,10 +416,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
+  <a href="#how-sqbyl-does-it-automatic-but-governed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project layout
+        How sqbyl does it — automatic, but governed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-that-looks-like-on-a-real-question" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What that looks like on a real question
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unit-economics-what-it-costs-to-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit economics: what it costs to run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#from-blessed-to-deployed-a-production-endpoint-in-20-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From blessed to deployed: a production endpoint in ~20 lines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bottom-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bottom line
       
     </span>
   </a>
@@ -403,33 +474,6 @@
   
 </nav>
       
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../case-study/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Case study: 70% → 96%
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -773,10 +817,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#install" class="md-nav__link">
+  <a href="#the-result" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Install
+        The result
       
     </span>
   </a>
@@ -784,10 +828,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#quickstart" class="md-nav__link">
+  <a href="#the-problem-with-the-two-usual-options" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Quickstart
+        The problem with the two usual options
       
     </span>
   </a>
@@ -795,10 +839,54 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#project-layout" class="md-nav__link">
+  <a href="#how-sqbyl-does-it-automatic-but-governed" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Project layout
+        How sqbyl does it — automatic, but governed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-that-looks-like-on-a-real-question" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What that looks like on a real question
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unit-economics-what-it-costs-to-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Unit economics: what it costs to run
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#from-blessed-to-deployed-a-production-endpoint-in-20-lines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From blessed to deployed: a production endpoint in ~20 lines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#bottom-line" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Bottom line
       
     </span>
   </a>
@@ -822,7 +910,7 @@
 
 
   
-    <a href="https://github.com/jackwerner/sqbyl/edit/main/docs/getting-started.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+    <a href="https://github.com/jackwerner/sqbyl/edit/main/docs/case-study.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
       
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
     </a>
@@ -830,90 +918,245 @@
   
 
 
-<h1 id="getting-started">Getting started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h1>
-<h2 id="install">Install<a class="headerlink" href="#install" title="Permanent link">&para;</a></h2>
-<p>sqbyl is provider-neutral — the provider SDKs are optional extras, so pick the one you'll
-use and install just that.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;sqbyl[anthropic]&#39;</span><span class="w">          </span><span class="c1"># full dev toolkit, Claude backend</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;sqbyl[openai]&#39;</span><span class="w">             </span><span class="c1"># full dev toolkit, OpenAI backend</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;sqbyl-runtime[anthropic]&#39;</span><span class="w">  </span><span class="c1"># the lightweight &quot;ship it&quot; runtime only</span>
-</code></pre></div>
-<p>A bare <code>pip install sqbyl</code> installs the toolkit without a provider SDK; the first LLM call
-then errors with the extra to install. Installing both <code>[anthropic]</code> and <code>[openai]</code> is fine
-— sqbyl imports whichever your project's <code>provider</code> names, at call time.</p>
-<div class="admonition note">
-<p class="admonition-title">Requirements</p>
+<h1 id="from-70-to-96-production-grade-text-to-sql-set-up-in-minutes">From 70% to 96%: production-grade text-to-SQL, set up in minutes<a class="headerlink" href="#from-70-to-96-production-grade-text-to-sql-set-up-in-minutes" title="Permanent link">&para;</a></h1>
+<h2 id="the-result">The result<a class="headerlink" href="#the-result" title="Permanent link">&para;</a></h2>
+<p>We took one LLM — Anthropic's <strong>Claude Haiku 4.5</strong>, deliberately a small, fast, low-cost
+model — pointed it at a Postgres database, and asked it the same 57 business questions
+twice: once with nothing but the raw database schema, once behind sqbyl.</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Raw LLM on the schema</th>
+<th>Same LLM, with sqbyl</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dev questions (42)</td>
+<td>69.0% correct</td>
+<td><strong>97.6% correct</strong></td>
+</tr>
+<tr>
+<td>Held-out questions (15)</td>
+<td>73.3% correct</td>
+<td><strong>93.3% correct</strong></td>
+</tr>
+<tr>
+<td><strong>Overall</strong></td>
+<td><strong>70.2%</strong></td>
+<td><strong>96.5%</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Same model. Same database. Same questions. What changed is that sqbyl built and governed
+the semantic layer the model reasons over — automatically, but with a human in control.</p>
+<p>That the model here is Haiku 4.5 <em>strengthens</em> the result on both axes that matter to an
+enterprise buyer: the accuracy lift comes without reaching for a bigger, slower, more
+expensive model, and the per-query economics (below) are those of the cheapest tier.</p>
+<h2 id="the-problem-with-the-two-usual-options">The problem with the two usual options<a class="headerlink" href="#the-problem-with-the-two-usual-options" title="Permanent link">&para;</a></h2>
+<p>Every team that wants reliable text-to-SQL hits the same wall: a raw LLM doesn't know what
+your columns <em>mean</em>. <code>in_stock</code> — is that a unit count or a boolean? <code>cost_price</code> vs.
+<code>unit_price</code> — which one does a user mean by "cost"? Get it wrong and you don't get an
+error, you get a confident, wrong answer. That's the 30-point gap in the table above.</p>
+<p>Teams typically close it one of two ways, and both have a catch:</p>
 <ul>
-<li><strong>Python 3.11+</strong></li>
-<li>An LLM provider API key — Anthropic (<code>ANTHROPIC_API_KEY</code>) or OpenAI (<code>OPENAI_API_KEY</code>)</li>
-<li>A SQL database reachable <strong>read-only</strong> (<code>DATABASE_URL</code>). DuckDB and Postgres are the
-  first-class dialects; SQLite, MySQL, Snowflake, and BigQuery are supported behind a
-  dialect seam.</li>
+<li><strong>Hand-build the semantic layer</strong> — accurate, but slow, expensive to maintain, and
+  perpetually stale. Someone has to write and re-write a description for every column on
+  every schema change, forever.</li>
+<li><strong>Point a black-box auto-generator at the schema</strong> — fast, but unaccountable. You can't
+  easily see what it guessed, you can't approve it before it ships, and — the part that
+  quietly poisons every accuracy number in this category — nothing stops it from tuning on
+  and grading against its <em>own</em> test set. The "accuracy" it reports back is inflated by
+  construction.</li>
 </ul>
+<h2 id="how-sqbyl-does-it-automatic-but-governed">How sqbyl does it — automatic, but governed<a class="headerlink" href="#how-sqbyl-does-it-automatic-but-governed" title="Permanent link">&para;</a></h2>
+<p>sqbyl's whole design premise is that you shouldn't have to choose between <em>automatic</em> and
+<em>trustworthy</em>. In this case study, one command — <code>sqbyl init</code> — did all of the following,
+and every step is built to keep a human in control and the numbers honest:</p>
+<p><strong>1. It drafted the entire semantic layer for us — we wrote none of it.</strong>
+sqbyl automatically profiled all 6 tables and drafted plain-English descriptions and
+business synonyms for all 35 columns, grounded in the real data distribution it measured.
+Zero hand-authored documentation. This is the "minimal intervention" half.</p>
+<p><strong>2. It never spent a cent without showing us the bill first.</strong>
+Before any paid work, sqbyl presents a line-itemed cost estimate and waits for approval —
+you can approve, pick a subset of steps, swap to a cheaper model, or walk away. No
+surprise spend, no black-box billing. Setup here came to about <strong>two cents</strong>.</p>
+<p><strong>3. It flagged its own uncertainty instead of guessing silently.</strong>
+When sqbyl detected that "cost" could describe <em>either</em> <code>cost_price</code> or <code>unit_price</code>, it
+didn't just pick one and move on. It <strong>capped its confidence on the contested columns
+below the auto-apply threshold and routed them to a human</strong> for a decision — exactly the
+place a wrong guess would have cost you a silently-wrong answer in production. High-
+confidence annotations apply automatically; ambiguous ones surface for review. That's the
+"human approval" half, and it's a UX principle, not an afterthought.</p>
+<p><strong>4. It measured itself honestly — and refused to grade on a curve.</strong>
+The 93.3% held-out number is real. sqbyl keeps a strict wall between the questions it
+tunes on and the held-out set it reports against — the held-out set is never
+auto-generated and never trained on. Even sqbyl's optional "learn from a held-out failure"
+path is walled off from the answer key by construction and quarantines any item a human
+inspected, so a fixed question can never quietly inflate the headline score. When we ran
+sqbyl's optimizer against a 95% target, it confirmed the project already cleared the bar
+and stopped — it didn't manufacture busywork to look busy.</p>
+<p>The through-line: <strong>sqbyl automates the labor and keeps the judgment with you.</strong> You get
+the speed of auto-generation and the accountability of a hand-built layer, without picking
+one.</p>
+<p><strong>And it happened in minutes.</strong> Building and governing the entire semantic layer — profile,
+draft, flag ambiguities, and score a 42-question baseline — was a single <code>sqbyl init</code> pass
+that ran in a few minutes, versus the days or weeks a hand-built layer takes. Each
+before/after accuracy measurement was another minute or two. And there was headroom we
+didn't spend: when we pointed sqbyl's optimizer at a 95% target, it confirmed we'd
+<em>already</em> cleared it and stopped rather than burn budget for show. These are a few-minutes,
+first-pass result — the ceiling is higher, we just didn't need to reach for it.</p>
+<h2 id="what-that-looks-like-on-a-real-question">What that looks like on a real question<a class="headerlink" href="#what-that-looks-like-on-a-real-question" title="Permanent link">&para;</a></h2>
+<p><strong>"How many products are currently in stock?"</strong>
+The raw LLM didn't know what <code>in_stock</code> was and guessed — it <em>summed</em> the column, answering
+"how many units are in stock" instead of "how many products have stock." Confidently wrong.
+sqbyl had already auto-annotated <code>in_stock</code> as "the current quantity of the product
+available in inventory," so the governed agent counted products with stock — correctly,
+on every run. Nobody on our side wrote that description; sqbyl drafted it and we approved
+the pass.</p>
+<p><strong>"Products that cost more than $100" — the honest hard case.</strong>
+This is the one sqbyl flagged as ambiguous up front. "Cost" genuinely maps to two columns,
+and rather than hide that, sqbyl surfaced it for a human call. That's the difference
+between a tool that's confidently wrong and one that tells you where it's unsure — which,
+for anyone putting these answers in front of executives, is the entire ballgame.</p>
+<h2 id="unit-economics-what-it-costs-to-run">Unit economics: what it costs to run<a class="headerlink" href="#unit-economics-what-it-costs-to-run" title="Permanent link">&para;</a></h2>
+<p>Setup is one-time. What matters for a production deployment is the run-rate — and because
+the whole result rides on Claude Haiku 4.5, that run-rate is the cheapest tier available.
+These are sqbyl's own metered operational numbers, not estimates:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Model</td>
+<td>Claude Haiku 4.5</td>
+</tr>
+<tr>
+<td>Cost per query</td>
+<td><strong>$0.0042</strong></td>
+</tr>
+<tr>
+<td>Tokens per query</td>
+<td>3,497</td>
+</tr>
+<tr>
+<td>p50 latency</td>
+<td>1.95s</td>
+</tr>
+<tr>
+<td>p95 latency</td>
+<td>3.49s</td>
+</tr>
+</tbody>
+</table>
+<p>Scaled to volume:</p>
+<table>
+<thead>
+<tr>
+<th>Query volume / month</th>
+<th>Projected monthly cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>10,000</td>
+<td><strong>$42</strong></td>
+</tr>
+<tr>
+<td>100,000</td>
+<td><strong>$423</strong></td>
+</tr>
+<tr>
+<td>1,000,000</td>
+<td><strong>$4,227</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Under half a cent per question, answering at 96.5% accuracy against a live database — on a
+semantic layer that cost two cents and minutes to build, and that a human signed off on.</p>
+<h2 id="from-blessed-to-deployed-a-production-endpoint-in-20-lines">From blessed to deployed: a production endpoint in ~20 lines<a class="headerlink" href="#from-blessed-to-deployed-a-production-endpoint-in-20-lines" title="Permanent link">&para;</a></h2>
+<p>The accuracy and economics above aren't a lab artifact you then have to go re-engineer for
+production. Once a version clears the bar, <code>sqbyl release</code> compiles it into a single
+portable file stamped with its held-out scorecard — and a lightweight runtime, sqbyl's own
+<code>sqbyl-runtime</code> package (no dev tooling, no eval machinery), loads that file and serves it.
+Dropping it behind FastAPI is about twenty lines:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span><span class="o">,</span><span class="w"> </span><span class="nn">sqbyl_runtime</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">fastapi</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastAPI</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">agent</span> <span class="o">=</span> <span class="n">sqbyl_runtime</span><span class="o">.</span><span class="n">load</span><span class="p">(</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="s2">&quot;sqbyl-casestudy-v2.v1.json&quot;</span><span class="p">,</span>         <span class="c1"># the blessed release + its scorecard</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">db</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="s2">&quot;DATABASE_URL&quot;</span><span class="p">],</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">model</span><span class="o">=</span><span class="s2">&quot;claude-haiku-4-5-20251001&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="n">narrate</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                          <span class="c1"># opt-in: also return a plain-English answer</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="p">)</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">()</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">Ask</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">question</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nd">@app</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="s2">&quot;/ask&quot;</span><span class="p">)</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="k">def</span><span class="w"> </span><span class="nf">ask</span><span class="p">(</span><span class="n">body</span><span class="p">:</span> <span class="n">Ask</span><span class="p">):</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="n">r</span> <span class="o">=</span> <span class="n">agent</span><span class="o">.</span><span class="n">ask</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">question</span><span class="p">)</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">return</span> <span class="p">{</span><span class="s2">&quot;answer&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">answer</span><span class="p">,</span> <span class="s2">&quot;sql&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">sql</span><span class="p">,</span> <span class="s2">&quot;columns&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">columns</span><span class="p">,</span> <span class="s2">&quot;rows&quot;</span><span class="p">:</span> <span class="n">r</span><span class="o">.</span><span class="n">rows</span><span class="p">}</span>
+</code></pre></div>
+<p>That's the whole integration. We actually stood this up and sent it live questions:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>POST /ask   {&quot;question&quot;: &quot;Which product category has generated the most revenue?&quot;}
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>→ &quot;answer&quot;: &quot;The Home &amp; Kitchen product category has generated the most revenue
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>             with $1,756,898.34.&quot;
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>   &quot;rows&quot;:  [[&quot;Home &amp; Kitchen&quot;, 1756898.34]]
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>POST /ask   {&quot;question&quot;: &quot;How many customers have churned?&quot;}
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>→ &quot;answer&quot;: &quot;21 customers have churned.&quot;
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>   &quot;sql&quot;:   SELECT COUNT(*) ... FROM customers WHERE is_active = false
+</code></pre></div>
+<p>Two things worth calling out for an engineering evaluator:</p>
+<ul>
+<li><strong>The plain-English <code>answer</code> is opt-in and grounded, not a black box.</strong> That <code>narrate</code>
+  flag adds one extra summarization step <em>over the already-executed rows</em> — the SQL and the
+  returned rows remain the authoritative result, and the runtime never reports a figure in
+  the sentence that isn't in the data. Off by default, so the deterministic path stays the
+  default. Leave it off for a BI backend that renders its own tables; turn it on for a chat
+  or Slack surface that needs a sentence.</li>
+<li><strong>The runtime is decoupled from the toolkit.</strong> You build, evaluate, and bless with the
+  full sqbyl toolchain; you <em>deploy</em> the compact <code>sqbyl-runtime</code> with just the release file.
+  The same release also serves over MCP or as a built-in chat server (<code>sqbyl run</code>) if you'd
+  rather not write the FastAPI wrapper at all — and it can route through a corporate LLM
+  gateway or proxy with a one-line <code>base_url</code> change.</li>
+</ul>
+<h2 id="bottom-line">Bottom line<a class="headerlink" href="#bottom-line" title="Permanent link">&para;</a></h2>
+<p>A raw LLM on your schema gets business questions right about 7 times out of 10. The same
+model — a small, cheap one — behind sqbyl gets them right better than 19 times out of 20,
+from a first-pass setup that ran in <strong>minutes, not months</strong>. sqbyl gets you there by
+automating the tedious part (drafting the semantic layer) while keeping you in control of
+the part that matters (approving it, and measuring it honestly). Fast like auto-generation,
+accountable like a hand-built layer, and priced like the smallest model on the menu — with
+room to climb higher whenever you want it. And when it's blessed, it ships behind a
+production endpoint in twenty lines.</p>
+<hr />
+<div class="admonition note">
+<p class="admonition-title">Methodology</p>
+<p>Model: Claude Haiku 4.5. Accuracy was verified by executing both the agent's SQL and
+the reference SQL against the live database and comparing results. Held-out figures are
+from a hand-authored question set never used for tuning. Cost and latency figures are
+sqbyl's own metered operational report. The deployment snippet was run live against the
+blessed release; the responses shown are actual endpoint output.</p>
 </div>
-<p>Developing on sqbyl itself? See
-<a href="https://github.com/jackwerner/sqbyl/blob/main/CONTRIBUTING.md"><code>CONTRIBUTING.md</code></a> for the
-from-source setup with <a href="https://github.com/astral-sh/uv"><code>uv</code></a>.</p>
-<h2 id="quickstart">Quickstart<a class="headerlink" href="#quickstart" title="Permanent link">&para;</a></h2>
-<p>Point sqbyl at a database and a key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">ANTHROPIC_API_KEY</span><span class="o">=</span>sk-ant-...
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nb">export</span><span class="w"> </span><span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://readonly_user@warehouse.internal/analytics<span class="w">   </span><span class="c1"># read-only role</span>
-</code></pre></div>
-<p>Then run the guided setup. There's <strong>no config file to hand-write</strong> — if <code>sqbyl.yaml</code> is
-missing, <code>init</code> walks you through creating it (name, dialect, connection URL, provider,
-API-key env var). It then does the free, deterministic work first (connect, read schema,
-profile every column with read-only SQL), checks your provider key works (a <code>$0</code>, token-free
-call), shows you a <strong>costed plan</strong>, and only spends after you confirm:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sqbyl<span class="w"> </span>init
-</code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>▸ connecting…………………………………… done
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>▸ reading schema………………………………… 42 tables, 380 columns
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>▸ profiling columns (read-only SQL)… done   ($0 — no LLM)
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>▸ heuristic join candidates……………… 11 found, 3 ambiguous
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>Ready to enrich with Claude. Here&#39;s the plan and the estimate:
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  annotate 380 columns + 42 tables   ~$1.20
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a>  synthesize ~40-question benchmark  ~$0.60
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>  baseline eval                      ~$0.30
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a>  ─────────────────────────────────────────
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>  estimated total                   ~$2.15   on claude-opus-4-8
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>Proceed? [Y]es · [s]elect steps · [m]odel · [n]o
-</code></pre></div>
-<p>You land in a review queue — not a blank page — surfacing only the decisions a human has to
-make (e.g. <em>"what counts as an active customer?"</em>), each with a sensible default pre-filled.
-Accept your way to the readiness target, then run the loop:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>sqbyl<span class="w"> </span><span class="nb">eval</span><span class="w"> </span>dev<span class="w">        </span><span class="c1"># measure against your iteration set</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>sqbyl<span class="w"> </span>coach<span class="w">           </span><span class="c1"># ranked, applyable file diffs for whatever still fails</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>sqbyl<span class="w"> </span>coach<span class="w"> </span>apply<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="c1"># writes the edits (git tracks them)</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>sqbyl<span class="w"> </span><span class="nb">eval</span><span class="w"> </span><span class="nb">test</span><span class="w">       </span><span class="c1"># the honest, held-out number</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>sqbyl<span class="w"> </span>release<span class="w"> </span>create<span class="w"> </span>--tag<span class="w"> </span>v1
-</code></pre></div>
-<p><code>release create</code> emits one portable JSON — the agent's "brain" (semantics, instructions,
-examples, judge prompts, scorecard). The model, key, and database are <strong>not</strong> baked in;
-they're injected wherever it runs.</p>
-<p>For the full narrative, read the <a href="../sqbyl-user-journey/">user journey</a>. To put the release
-behind your own API, see <a href="../guides/embedding/">Embedding the runtime</a>.</p>
-<h2 id="project-layout">Project layout<a class="headerlink" href="#project-layout" title="Permanent link">&para;</a></h2>
-<p>A sqbyl project is a git-native directory of plain files:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>my-project/
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── sqbyl.yaml          # manifest: db connection, model(s), defaults
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>├── instructions.md     # the (small) global instruction block
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>├── semantics/          # one YAML per table: columns, profiles, joins, measures, filters
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>├── examples/           # NL → SQL few-shot pairs
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>├── trusted/            # vetted, parameterized &quot;source of truth&quot; queries
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>├── benchmarks/
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>│   ├── dev.yaml        # iteration set: Coach/Optimizer tune against this
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>│   └── test.yaml       # held-out set: Coach/Optimizer NEVER see it
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>└── .sqbyl/             # runs, traces, usage, caches (gitignored)
-</code></pre></div>
-<p>The dev/test split is load-bearing — see <a href="../concepts/#devtest-discipline">dev/test discipline</a>.</p>
 
 
 
 
 
 
+
+  
+  
 
 
 
@@ -943,7 +1186,7 @@ behind your own API, see <a href="../guides/embedding/">Embedding the runtime</a
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href=".." class="md-footer__link md-footer__link--prev" aria-label="Previous: Home">
+          <a href="../getting-started/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Getting started">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -953,20 +1196,20 @@ behind your own API, see <a href="../guides/embedding/">Embedding the runtime</a
                 Previous
               </span>
               <div class="md-ellipsis">
-                Home
+                Getting started
               </div>
             </div>
           </a>
         
         
           
-          <a href="../case-study/" class="md-footer__link md-footer__link--next" aria-label="Next: Case study: 70% → 96%">
+          <a href="../concepts/" class="md-footer__link md-footer__link--next" aria-label="Next: Concepts">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Case study: 70% → 96%
+                Concepts
               </div>
             </div>
             <div class="md-footer__button md-icon">
