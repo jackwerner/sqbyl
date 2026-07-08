@@ -118,6 +118,8 @@ _COLLISION_STOPWORDS = frozenset(
         "on",
         "for",
         "id",
+        "identifier",  # the long form of "id" — ID columns routinely list it, and two IDs
+        # sharing "identifier" is never the disambiguation a human needs to see (finding #2 UX).
         "this",
         "value",
         "amount",
@@ -125,6 +127,25 @@ _COLLISION_STOPWORDS = frozenset(
         "with",
     }
 )
+
+
+def _topical_tokens(table_name: str) -> frozenset[str]:
+    """The table's own entity words (``analytics.orders`` → ``{"orders", "order"}``).
+
+    These are *topical*, not disambiguating: every column in an orders table is "about" orders,
+    so a synonym that merely shares the entity root — ``order_id``'s "order number",
+    ``order_date``'s "order date" — isn't a genuine ambiguity, it's the table's subject. Excluding
+    them keeps the real signal (a contested term like "price") from being buried under one topical
+    collision per column pair, which is what turned a 6-table schema into 38 warnings (finding #2
+    UX). Includes a naive de-pluralization so the singular root matches column vocabulary."""
+    leaf = table_name.rsplit(".", 1)[-1]
+    tokens: set[str] = set()
+    for tok in re.split(r"[^a-z0-9]+", leaf.lower()):
+        if len(tok) >= 3:
+            tokens.add(tok)
+            if tok.endswith("s") and len(tok) > 3:
+                tokens.add(tok[:-1])
+    return frozenset(tokens)
 
 
 def _content_tokens(phrases: list[str]) -> set[str]:
@@ -153,14 +174,17 @@ class SynonymCollision:
         )
 
 
-def _detect_collisions(columns: list[tuple[str, list[str]]]) -> list[SynonymCollision]:
+def _detect_collisions(
+    columns: list[tuple[str, list[str]]], *, topical: frozenset[str] = frozenset()
+) -> list[SynonymCollision]:
     """Core detector over ``(name, synonyms)`` pairs — shared by the draft-time and
     written-file entry points below.
 
     A collision is a **synonym token** of column A that also appears in column B's own name or
     synonyms (or vice-versa): the word points at both columns, so which one the agent picks is
-    a coin flip the metadata doesn't resolve. Deterministic and $0. Sorted, de-duplicated by
-    (token, column-pair)."""
+    a coin flip the metadata doesn't resolve. ``topical`` tokens (the table's own entity words —
+    see :func:`_topical_tokens`) are excluded: they're the table's subject, not a real contest.
+    Deterministic and $0. Sorted, de-duplicated by (token, column-pair)."""
     syn_tokens = {name: _content_tokens(list(syns)) for name, syns in columns}
     id_tokens = {name: _content_tokens([name, *syns]) for name, syns in columns}
     out: list[SynonymCollision] = []
@@ -170,7 +194,7 @@ def _detect_collisions(columns: list[tuple[str, list[str]]]) -> list[SynonymColl
             shared = (syn_tokens[a_name] & id_tokens[b_name]) | (
                 syn_tokens[b_name] & id_tokens[a_name]
             )
-            for tok in sorted(shared):
+            for tok in sorted(shared - topical):
                 pair = (a_name, b_name) if a_name <= b_name else (b_name, a_name)
                 if (tok, pair) not in seen:
                     seen.add((tok, pair))
@@ -178,16 +202,28 @@ def _detect_collisions(columns: list[tuple[str, list[str]]]) -> list[SynonymColl
     return out
 
 
-def detect_synonym_collisions(annotation: TableAnnotation) -> list[SynonymCollision]:
-    """Flag contested synonyms in a freshly-drafted :class:`TableAnnotation` (draft time)."""
-    return _detect_collisions([(c.name, list(c.synonyms)) for c in annotation.columns])
+def detect_synonym_collisions(
+    annotation: TableAnnotation, *, table_name: str | None = None
+) -> list[SynonymCollision]:
+    """Flag contested synonyms in a freshly-drafted :class:`TableAnnotation` (draft time).
+
+    Pass ``table_name`` (the annotation object doesn't carry it) so the table's own entity words
+    are treated as topical, not as collisions — the same de-noising the written-file scan gets."""
+    topical = _topical_tokens(table_name) if table_name else frozenset()
+    return _detect_collisions(
+        [(c.name, list(c.synonyms)) for c in annotation.columns], topical=topical
+    )
 
 
 def detect_semantics_collisions(table: TableSemantics) -> list[SynonymCollision]:
     """Flag contested synonyms in an already-written :class:`TableSemantics` file — used to
     surface collisions after `init`'s parallel annotate wave (where the per-unit draft ran in
-    a worker thread), by re-scanning the persisted columns."""
-    return _detect_collisions([(c.name, list(c.synonyms)) for c in table.columns])
+    a worker thread), by re-scanning the persisted columns. The table's own entity words are
+    excluded as topical (finding #2 UX)."""
+    return _detect_collisions(
+        [(c.name, list(c.synonyms)) for c in table.columns],
+        topical=_topical_tokens(table.table),
+    )
 
 
 # A contested column can't be trusted enough to auto-apply, so its confidence is capped below
@@ -197,14 +233,15 @@ _COLLISION_CONFIDENCE_CAP = 0.5
 
 
 def flag_synonym_collisions(
-    annotation: TableAnnotation,
+    annotation: TableAnnotation, *, table_name: str | None = None
 ) -> tuple[TableAnnotation, list[SynonymCollision]]:
     """Detect collisions and return an annotation with contested columns' confidence capped.
 
     The cap keeps an overconfident-but-contested synonym from clearing the auto-apply gate
-    (responsible-ai); the returned collisions are surfaced to the human. A collision-free
-    annotation is returned unchanged."""
-    collisions = detect_synonym_collisions(annotation)
+    (responsible-ai); the returned collisions are surfaced to the human. ``table_name`` excludes
+    the table's own topical words from the contest. A collision-free annotation is returned
+    unchanged."""
+    collisions = detect_synonym_collisions(annotation, table_name=table_name)
     if not collisions:
         return annotation, collisions
     contested = {name for c in collisions for name in c.columns}

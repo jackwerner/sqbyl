@@ -163,9 +163,25 @@ def test_unknown_layer_degrades_to_prose(
     report = coach(
         project, _failing_run(), llm=MockLLMClient([structured_reply(payload)]), model="claude-x"
     )
-    # An unrecognized layer can't masquerade as high-leverage — it's treated as last-resort prose.
+    # An unrecognized layer can't masquerade as high-leverage — its *layer* degrades to the
+    # last-resort `instruction`, so LAYER_PREFERENCE ranks it dead last.
     assert report.proposals[0].layer is CoachLayer.instruction
-    assert report.proposals[0].is_prose
+    # ...but `is_prose` tracks the target file, not the layer: this edit writes a semantics yaml,
+    # so it is NOT flagged "global prose — last resort" and NOT force-routed to human review.
+    assert report.proposals[0].is_prose is False
+
+
+def test_is_prose_tracks_the_target_file_not_the_self_reported_layer() -> None:
+    # The bug (UX finding): the Coach mislabeled a well-targeted structured column edit as
+    # layer=instruction. Trusting the layer stamped it with the "last resort" flag a reviewer
+    # skips. is_prose must derive from where the edit actually writes.
+    def mk(layer: CoachLayer, target: str) -> CoachProposal:
+        return CoachProposal(id="p", title="t", root_cause="rc", layer=layer, target_file=target)
+
+    assert mk(CoachLayer.instruction, "semantics/products.yaml").is_prose is False
+    assert mk(CoachLayer.instruction, "./instructions.md").is_prose is True
+    # And the reverse mislabel: a real prose edit the model tagged as a column change is prose.
+    assert mk(CoachLayer.column_description, "instructions.md").is_prose is True
 
 
 def _proposal(title: str, layer: str, *, fixes: int, qids: list[str], target: str) -> dict:

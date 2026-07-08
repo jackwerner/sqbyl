@@ -11,6 +11,24 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-07-08
+
+### Fixed
+
+- **Synonym-collision detection is no longer drowned in topical noise.** The `$0` collision pass
+  (added in 0.4.0) flagged every column pair that shared the table's own entity root — an orders
+  table's `order_id`/`order_date` both "about" orders — turning a 6-table schema into ~38 warnings
+  and burying the one that matters (`price` → `cost_price`/`unit_price`). The detector now excludes
+  the table's own name (de-pluralized) as topical and treats `identifier` as the generic ID word it
+  is. On a representative schema this cut 11 collisions to 2, keeping the real contest and dropping
+  the noise — so the warning stays usable on the 30+ table schemas that need it most.
+- **`CoachProposal.is_prose` now tracks the target file, not the model's self-reported layer.** The
+  Coach sometimes mislabels a well-targeted structured edit (a real `semantics/*.yaml` column
+  change) as `layer=instruction`. That stamped it with the "⚠ global prose — last resort" flag a
+  reviewer is trained to skip *and* force-routed it to human review. `is_prose` is now derived from
+  whether `target_file` is `instructions.md`, so a structured edit is judged by where it actually
+  writes. (Removed the now-unused `PROSE_LAYERS` export; added `PROSE_FILE`.)
+
 ## [0.4.0] — 2026-07-08
 
 ### Added

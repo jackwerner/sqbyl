@@ -23,7 +23,7 @@ from sqbyl.models.candidates import (
 )
 from sqbyl.models.coach import (
     LAYER_PREFERENCE,
-    PROSE_LAYERS,
+    PROSE_FILE,
     CoachEdit,
     CoachLayer,
     CoachProposal,
@@ -73,7 +73,7 @@ __all__ = [
     "EVIDENCE_ROW_CAP",
     "GOLD_MISMATCH_JUDGES",
     "LAYER_PREFERENCE",
-    "PROSE_LAYERS",
+    "PROSE_FILE",
     "JUDGE_ANSWER_QUALITY",
     "JUDGE_COMPLETENESS",
     "JUDGE_LOGICAL_ACCURACY",
