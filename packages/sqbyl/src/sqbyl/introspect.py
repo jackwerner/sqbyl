@@ -51,6 +51,10 @@ class _RawTable:
 
 def discover_tables(db: Database) -> list[tuple[str, str]]:
     """List ``(schema, table)`` pairs for user tables/views in the current catalog."""
+    # SQLite has no ``information_schema``; read table/view names off the SQLAlchemy
+    # inspector instead (same seam introspection already uses for columns and keys).
+    if db.dialect is Dialect.sqlite:
+        return _discover_tables_via_inspector(db)
     result = db.execute(
         "SELECT table_schema, table_name FROM information_schema.tables "
         "WHERE table_type IN ('BASE TABLE', 'VIEW') "
@@ -58,6 +62,19 @@ def discover_tables(db: Database) -> list[tuple[str, str]]:
         "ORDER BY table_schema, table_name"
     )
     return [(str(schema), str(name)) for schema, name in result.rows]
+
+
+def _discover_tables_via_inspector(db: Database) -> list[tuple[str, str]]:
+    """Table/view discovery through the SQLAlchemy inspector, for dialects without an
+    ``information_schema`` (SQLite). Skips system and temp schemas, same as the SQL path."""
+    insp = sa.inspect(db.engine)
+    pairs: list[tuple[str, str]] = []
+    for schema in insp.get_schema_names():
+        if schema in _SYSTEM_SCHEMAS or schema == "temp":
+            continue
+        names = (*insp.get_table_names(schema=schema), *insp.get_view_names(schema=schema))
+        pairs.extend((schema, str(name)) for name in names)
+    return sorted(pairs)
 
 
 def _primary_key_columns(

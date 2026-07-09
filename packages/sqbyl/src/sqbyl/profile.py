@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from math import ceil, floor
 from typing import SupportsInt, cast
 
 from sqbyl_runtime.db import Database
@@ -37,6 +38,9 @@ _NUMERIC_HINTS = (
     "hugeint",
 )
 _TEMPORAL_HINTS = ("date", "timestamp", "time")
+
+# The percentiles captured for numeric columns.
+_QUANTILES = (0.25, 0.50, 0.75, 0.95)
 
 
 @dataclass(frozen=True)
@@ -90,32 +94,70 @@ def _normalize(value: object) -> ScalarBound | None:
 
 
 class _ProfileSql:
-    """Dialect-specific fragments the profiler needs. DuckDB is first-class; Postgres
-    is supported on the same shape (untested in CI, no server)."""
+    """Dialect-specific SQL fragments the profiler needs.
+
+    DuckDB and SQLite are exercised in CI (DuckDB first-class; SQLite via the bundled
+    fixture). Postgres/MySQL/Snowflake/BigQuery use documented syntax but run only
+    against a live server. Dialects with no in-SQL continuous-percentile aggregate
+    (SQLite, MySQL) report ``quantiles_in_sql = False``; the profiler then computes
+    percentiles in Python from the column's values instead of embedding them in SQL.
+    """
+
+    # Dialects with an in-SQL continuous-percentile aggregate we can embed directly in
+    # the stats query. Everything else falls back to a Python computation.
+    _QUANTILE_IN_SQL = frozenset(
+        {Dialect.duckdb, Dialect.postgresql, Dialect.snowflake, Dialect.bigquery}
+    )
 
     def __init__(self, dialect: Dialect) -> None:
         self.dialect = dialect
+
+    @property
+    def quantiles_in_sql(self) -> bool:
+        return self.dialect in self._QUANTILE_IN_SQL
 
     def from_clause(self, table: str, *, sampled: bool, cfg: ProfileConfig) -> str:
         """A FROM-clause source. When sampling, wrap in a subquery so the sample
         binds to the table and the outer WHERE/GROUP BY still apply."""
         if not sampled:
             return table
+        return f"({self._sample_select(table, cfg)}) AS _sqbyl_sample"
+
+    def _sample_select(self, table: str, cfg: ProfileConfig) -> str:
+        """A row-sample SELECT. Only used past ``sample_over_rows``; each dialect gets a
+        deterministic-where-possible form (untested dialects are documented best-effort)."""
+        seed = cfg.sample_seed
         if self.dialect is Dialect.duckdb:
-            sample = (
+            return (
                 f"SELECT * FROM {table} USING SAMPLE reservoir({cfg.sample_rows} ROWS) "
-                f"REPEATABLE ({cfg.sample_seed})"
+                f"REPEATABLE ({seed})"
             )
-        else:
-            # Postgres: BERNOULLI is row-level and accepts REPEATABLE for determinism.
-            sample = (
-                f"SELECT * FROM {table} TABLESAMPLE BERNOULLI (1) REPEATABLE ({cfg.sample_seed})"
+        if self.dialect is Dialect.sqlite:
+            # No TABLESAMPLE and no seedable RAND; hash the rowid for a deterministic
+            # pseudo-random subset.
+            return (
+                f"SELECT * FROM {table} "
+                f"ORDER BY ((rowid * 2654435761 + {seed}) % 2147483647) "
+                f"LIMIT {cfg.sample_rows}"
             )
-        return f"({sample}) AS _sqbyl_sample"
+        if self.dialect is Dialect.mysql:
+            # No TABLESAMPLE; a seeded RAND ordering gives a reproducible sample.
+            return f"SELECT * FROM {table} ORDER BY RAND({seed}) LIMIT {cfg.sample_rows}"
+        if self.dialect is Dialect.bigquery:
+            # No REPEATABLE; SYSTEM (block-level) sampling is the documented form.
+            return f"SELECT * FROM {table} TABLESAMPLE SYSTEM (1 PERCENT)"
+        if self.dialect is Dialect.snowflake:
+            return f"SELECT * FROM {table} SAMPLE (1)"
+        # Postgres: BERNOULLI is row-level and accepts REPEATABLE for determinism.
+        return f"SELECT * FROM {table} TABLESAMPLE BERNOULLI (1) REPEATABLE ({seed})"
 
     def quantile(self, col: str, q: float) -> str:
+        """A continuous-percentile SQL expression (only for ``quantiles_in_sql`` dialects)."""
         if self.dialect is Dialect.duckdb:
             return f"quantile_cont({col}, {q})"
+        if self.dialect is Dialect.bigquery:
+            return f"APPROX_QUANTILES({col}, 100)[OFFSET({int(round(q * 100))})]"
+        # Postgres and Snowflake ordered-set aggregate.
         return f"percentile_cont({q}) WITHIN GROUP (ORDER BY {col})"
 
 
@@ -168,23 +210,31 @@ def _profile_column(
     ]
     if kind in ("numeric", "temporal"):
         selects += [f"min({col}) AS mn", f"max({col}) AS mx"]
-    if kind == "numeric":
-        selects += [f"{sql.quantile(col, q)} AS p{int(q * 100)}" for q in (0.25, 0.50, 0.75, 0.95)]
+    want_quantiles = kind == "numeric"
+    if want_quantiles and sql.quantiles_in_sql:
+        selects += [f"{sql.quantile(col, q)} AS p{int(q * 100)}" for q in _QUANTILES]
     row = db.execute(f"SELECT {', '.join(selects)} FROM {source}").dicts()[0]
 
     n = _as_int(row["n"] or 0)
     if n == 0:
         return column.model_copy(update={"profile": Profile(sampled=sampled)})
 
+    # Dialects without an in-SQL percentile aggregate (SQLite, MySQL) compute the
+    # quantiles in Python from the column's values; the rest read them off the row.
+    if want_quantiles and not sql.quantiles_in_sql:
+        pctl = _quantiles_via_python(db, source, col)
+    else:
+        pctl = {q: _as_float(row.get(f"p{int(q * 100)}")) for q in _QUANTILES}
+
     profile = Profile(
         nulls=round((n - _as_int(row["non_null"] or 0)) / n, 6),
         distinct=_as_int(row["n_distinct"] or 0),
         min=_normalize(row.get("mn")),
         max=_normalize(row.get("mx")),
-        p25=_as_float(row.get("p25")),
-        p50=_as_float(row.get("p50")),
-        p75=_as_float(row.get("p75")),
-        p95=_as_float(row.get("p95")),
+        p25=pctl[0.25],
+        p50=pctl[0.50],
+        p75=pctl[0.75],
+        p95=pctl[0.95],
         sampled=sampled,
     )
 
@@ -207,6 +257,32 @@ def _top_k(db: Database, source: str, col: str, k: int) -> list[ScalarBound]:
     ).rows
     values = [_normalize(r[0]) for r in rows]
     return [v for v in values if v is not None]
+
+
+def _quantiles_via_python(db: Database, source: str, col: str) -> dict[float, float | None]:
+    """Continuous percentiles computed in Python, for dialects with no percentile
+    aggregate (SQLite, MySQL). Pulls the column's non-null values (bounded by sampling)
+    and interpolates — matching what ``percentile_cont`` returns on the same input."""
+    rows = db.execute(
+        f"SELECT {col} AS v FROM {source} WHERE {col} IS NOT NULL ORDER BY {col}"
+    ).rows
+    values = [f for r in rows if (f := _as_float(r[0])) is not None]
+    return {q: _percentile_cont(values, q) for q in _QUANTILES}
+
+
+def _percentile_cont(sorted_values: list[float], q: float) -> float | None:
+    """Linear-interpolation percentile over pre-sorted values, matching SQL
+    ``percentile_cont`` (continuous, interpolated between the two nearest ranks)."""
+    if not sorted_values:
+        return None
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = q * (len(sorted_values) - 1)
+    lo = int(floor(pos))
+    hi = int(ceil(pos))
+    if lo == hi:
+        return sorted_values[lo]
+    return sorted_values[lo] * (hi - pos) + sorted_values[hi] * (pos - lo)
 
 
 def _as_float(value: object) -> float | None:

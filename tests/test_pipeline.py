@@ -96,6 +96,22 @@ def test_failure_after_exhausting_repairs(knowledge: ProjectKnowledge, db: Datab
     db.close()
 
 
+def test_unparseable_sql_fails_gracefully(knowledge: ProjectKnowledge, db: Database) -> None:
+    # A generation sqlglot cannot parse (unquoted spaced identifiers, as in real BIRD
+    # schemas) must become a failed answer that feeds self-repair — not an exception
+    # that propagates out of ask() and aborts a whole eval run.
+    bad = "SELECT COUNT(DISTINCT School Name) FROM analytics.orders WHERE County Name = 'x'"
+    llm = MockLLMClient([_gen(bad)] * 3)
+    result = ask(
+        "count schools", knowledge=knowledge, db=db, llm=llm, model="m", self_repair_attempts=2
+    )
+    assert not result.ok
+    assert result.attempts == 3  # it retried rather than crashing on the first bad gen
+    assert result.error is not None
+    assert result.rows == []
+    db.close()
+
+
 def test_write_sql_is_refused_not_executed(knowledge: ProjectKnowledge, db: Database) -> None:
     # Even if the model emits a write, the read-only guard refuses it (it never runs).
     llm = MockLLMClient([_gen("DELETE FROM analytics.orders")] * 3)
