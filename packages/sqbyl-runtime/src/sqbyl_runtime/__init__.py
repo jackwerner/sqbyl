@@ -10,6 +10,8 @@ from here — that one-way dependency arrow is enforced by import-linter in CI.
     agent.ask("How many orders shipped last month?")   # → AgentResult
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from sqbyl_runtime.export import (
     McpServer,
     answer_dict,
@@ -24,7 +26,10 @@ from sqbyl_runtime.runtime import (
     load,
 )
 
-__version__ = "0.0.0"
+try:
+    __version__ = version("sqbyl-runtime")
+except PackageNotFoundError:  # running from a source tree with no installed metadata
+    __version__ = "0.0.0"
 
 __all__ = [
     "Agent",
