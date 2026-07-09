@@ -18,9 +18,11 @@ narrowed table set in — so the renderer itself stays a pure function of its in
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
+from sqlglot import exp
 
 from sqbyl_runtime.llm.base import LLMClient, Usage
 from sqbyl_runtime.models import (
@@ -39,6 +41,40 @@ from sqbyl_runtime.selection import LLMCallHook, ValueMatch, select_context
 # Past this many tables "include everything" stops being viable and Phase 9's
 # LLM/lexical shortlisting is needed; until then we still include all but flag it.
 _INCLUDE_ALL_TABLE_LIMIT = 30
+
+# A plain identifier needs no quoting; anything else (spaces, parentheses, a leading
+# digit — think BIRD's ``Charter School (Y/N)``) does, and the agent otherwise has to
+# guess the dialect's quote char. We render those pre-quoted so it copies the exact
+# token rather than emitting unparseable SQL (finding B5).
+_SIMPLE_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _sqlglot_dialect(dialect: Dialect) -> str:
+    # sqbyl uses 'postgresql'; sqlglot's dialect is 'postgres'. The rest match.
+    return "postgres" if dialect is Dialect.postgresql else dialect.value
+
+
+def _display_ident(name: str, dialect: Dialect) -> str:
+    """A simple identifier bare; one with spaces/special chars in its dialect-quoted form."""
+    if _SIMPLE_IDENT.match(name):
+        return name
+    return exp.to_identifier(name, quoted=True).sql(dialect=_sqlglot_dialect(dialect))
+
+
+def _display_table(qualified: str, dialect: Dialect) -> str:
+    """A ``schema.name`` reference with each part quoted only if it needs it."""
+    return ".".join(_display_ident(part, dialect) for part in qualified.split("."))
+
+
+def _needs_quoting(semantics: Sequence[TableSemantics]) -> bool:
+    """Whether any table/column name in the set requires quoting — gates the one-line
+    reminder so clean schemas (and their cassettes) render byte-for-byte as before."""
+    for table in semantics:
+        if any(not _SIMPLE_IDENT.match(part) for part in table.table.split(".")):
+            return True
+        if any(not _SIMPLE_IDENT.match(col.name) for col in table.columns):
+            return True
+    return False
 
 
 class CompiledContext(BaseModel):
@@ -226,7 +262,7 @@ def _render_system(
         # Rendered verbatim: instructions.md is author-owned markdown (it brings its
         # own headings), so we don't wrap it in another.
         blocks.append(instructions.strip())
-    blocks.append(_render_tables(semantics))
+    blocks.append(_render_tables(semantics, dialect=dialect))
     if value_matches:
         blocks.append(_render_value_matches(value_matches))
     if trusted_assets:
@@ -244,10 +280,15 @@ def _render_value_matches(value_matches: Sequence[ValueMatch]) -> str:
     return "\n".join(lines)
 
 
-def _render_tables(semantics: Sequence[TableSemantics]) -> str:
+def _render_tables(semantics: Sequence[TableSemantics], *, dialect: Dialect) -> str:
     lines = ["# Schema"]
+    if _needs_quoting(semantics):
+        lines.append(
+            "Some identifiers below are shown quoted because they contain spaces or special "
+            "characters — reproduce them exactly, quotes included, wherever they appear in SQL."
+        )
     for table in semantics:
-        header = f"## {table.table}"
+        header = f"## {_display_table(table.table, dialect)}"
         if table.description:
             header += f" — {table.description}"
         lines.append(header)
@@ -255,7 +296,7 @@ def _render_tables(semantics: Sequence[TableSemantics]) -> str:
             lines.append(f"synonyms: {', '.join(table.synonyms)}")
         lines.append("columns:")
         for col in table.columns:
-            lines.append(_render_column(col))
+            lines.append(_render_column(col, dialect=dialect))
         for join in table.joins:
             conf = "" if join.confidence is None else f"  [confidence {join.confidence:.2f}]"
             lines.append(f"join: {join.type} -> {join.to} ON {join.on}{conf}")
@@ -268,8 +309,8 @@ def _render_tables(semantics: Sequence[TableSemantics]) -> str:
     return "\n".join(lines)
 
 
-def _render_column(col: Column) -> str:
-    parts = [f"- {col.name} ({col.type})"]
+def _render_column(col: Column, *, dialect: Dialect) -> str:
+    parts = [f"- {_display_ident(col.name, dialect)} ({col.type})"]
     if col.description:
         parts.append(f" — {col.description}")
     if col.synonyms:

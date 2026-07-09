@@ -1556,26 +1556,33 @@ def _annotate(args: list[str]) -> int:
         attributes={"gen_ai.operation.name": "chat", "sqbyl.tables": len(paths)},
     )
 
-    done, stopped = 0, False
+    done, skipped, stopped = 0, 0, False
     with UsageStore(state.usage_db) as store:
         meter = SpendMeter(budget=budget, store=store, command="annotate")
         for path in paths:
             # Live cap: gate each table on the running tally before spending on it.
             if not _authorize(meter, per_table, auto=auto, label=f"annotate {path.name}"):
-                left = len(paths) - done
+                left = len(paths) - done - skipped
                 print(f"  ⏸ {left} table(s) left; re-run `sqbyl annotate` to continue")
                 stopped = True
                 break
             raw = load_yaml(path.read_text())
-            table = TableSemantics.model_validate(raw)
-            annotation, response = annotate_table(
-                llm,
-                table,
-                model=model,
-                trace_writer=trace_writer,
-                trace_id=run_span.trace_id,
-                parent_span_id=run_span.span_id,
-            )
+            try:
+                table = TableSemantics.model_validate(raw)
+                annotation, response = annotate_table(
+                    llm,
+                    table,
+                    model=model,
+                    trace_writer=trace_writer,
+                    trace_id=run_span.trace_id,
+                    parent_span_id=run_span.span_id,
+                )
+            except Exception as exc:
+                # One table's malformed model output must not lose the tables already done
+                # (finding B9, same shape as B4). Skip it, keep going; a re-run retries it.
+                skipped += 1
+                print(f"  ✗ {path.name}: {type(exc).__name__} — skipped, re-run to retry")
+                continue
             # $0 pass: flag synonyms that could equally describe a sibling column and cap their
             # confidence so a contested term isn't silently auto-applied (finding #2).
             annotation, collisions = flag_synonym_collisions(annotation)
@@ -1587,7 +1594,8 @@ def _annotate(args: list[str]) -> int:
                 print(f"    ⚠ {collision.describe()}")
         spent = meter.spent
     trace_writer.write(run_span.end(status="ok" if not stopped else "error"))
-    print(f"done — annotated {done}/{len(paths)}, metered ${spent:.4f}")
+    tail = f", {skipped} skipped" if skipped else ""
+    print(f"done — annotated {done}/{len(paths)}{tail}, metered ${spent:.4f}")
     return 0
 
 

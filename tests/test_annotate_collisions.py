@@ -142,6 +142,49 @@ def test_identifier_is_a_generic_id_word_not_a_collision() -> None:
     assert "identifier" not in tokens
 
 
+def test_triplicated_admin_block_does_not_explode_into_noise() -> None:
+    # Finding B6 (BIRD `california_schools`): a wide table with positional families —
+    # AdmFName1/2/3, AdmLName1/2/3, AdmEmail1/2/3 — has every column answering to generic
+    # words ("administrator", "name", "email"). Those are table vocabulary, not two-way
+    # contests, and must not spray dozens of warnings that also cap half the table.
+    def _fam(prefix: str, word: str) -> list[Column]:
+        return [
+            Column(name=f"{prefix}{i}", type="text", synonyms=[f"administrator {word}", word])
+            for i in (1, 2, 3)
+        ]
+
+    table = TableSemantics(
+        table="california.schools",
+        columns=[
+            *_fam("AdmFName", "first name"),
+            *_fam("AdmLName", "last name"),
+            *_fam("AdmEmail", "email"),
+        ],
+    )
+    collisions = detect_semantics_collisions(table)
+    # "administrator", "name", "first"/"last"/"email" all span ≥3 columns → all suppressed.
+    assert collisions == []
+
+
+def test_genuine_pairwise_contest_survives_on_a_wide_table() -> None:
+    # De-noising must not silence the real signal: even amid a noisy wide table, a word shared
+    # by exactly two columns is the contest a human should adjudicate.
+    table = TableSemantics(
+        table="california.schools",
+        columns=[
+            Column(name="AdmFName1", type="text", synonyms=["administrator", "first name"]),
+            Column(name="AdmFName2", type="text", synonyms=["administrator", "first name"]),
+            Column(name="AdmFName3", type="text", synonyms=["administrator", "first name"]),
+            Column(name="enroll_k12", type="int", synonyms=["enrollment", "students"]),
+            Column(name="student_count", type="int", synonyms=["students", "headcount"]),
+        ],
+    )
+    tokens = {c.token for c in detect_semantics_collisions(table)}
+    # "administrator"/"name"/"first" span 3 columns → suppressed; "students" spans exactly
+    # two (enroll_k12 vs student_count) → the genuine contest survives.
+    assert tokens == {"students"}
+
+
 def test_detect_synonym_collisions_excludes_topical_when_given_the_table_name() -> None:
     # The draft-time entry point (the annotation object has no table name) takes it explicitly.
     annotation = _annotation(

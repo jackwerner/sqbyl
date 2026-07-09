@@ -73,6 +73,42 @@ def test_large_schema_emits_a_note() -> None:
     assert len(ctx.selected_tables) == 31
 
 
+def test_dirty_identifiers_are_rendered_pre_quoted(knowledge: ProjectKnowledge) -> None:
+    # Finding B5: BIRD-style names with spaces/parens must reach the agent already quoted,
+    # so it copies the exact token instead of emitting unparseable unquoted SQL.
+    from sqbyl_runtime.models import Column
+
+    table = TableSemantics(
+        table="main.Charter Schools",
+        columns=[
+            Column(name="School Name", type="text"),
+            Column(name="Charter School (Y/N)", type="int"),
+        ],
+    )
+    system = compile_context("q", dialect=Dialect.sqlite, semantics=[table]).system
+    assert '## main."Charter Schools"' in system
+    assert '- "School Name" (text)' in system
+    assert '- "Charter School (Y/N)" (int)' in system
+    # The one-line reminder appears only because a dirty identifier is present.
+    assert "reproduce them exactly" in system
+
+
+def test_clean_identifiers_are_never_quoted_and_add_no_note() -> None:
+    # The reminder and quoting are gated on need: a clean schema renders exactly as before
+    # (this is what keeps the dogfood snapshot and every agent cassette byte-stable).
+    from sqbyl_runtime.models import Column
+
+    table = TableSemantics(
+        table="analytics.orders",
+        columns=[Column(name="order_id", type="bigint"), Column(name="total", type="numeric")],
+    )
+    system = compile_context("q", dialect=Dialect.duckdb, semantics=[table]).system
+    assert "## analytics.orders" in system
+    assert "- order_id (bigint)" in system
+    assert '"' not in system.split("# Schema")[1]  # nothing quoted in the schema block
+    assert "reproduce them exactly" not in system
+
+
 def test_matches_golden_snapshot(knowledge: ProjectKnowledge) -> None:
     system = knowledge.compile(_QUESTION).system
     if os.environ.get("SQBYL_UPDATE_SNAPSHOTS"):
