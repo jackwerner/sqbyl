@@ -75,7 +75,10 @@ def test_sampling_clause_is_a_sample_not_a_scan() -> None:
     cfg = ProfileConfig(sample_rows=500, sample_seed=7)
     full = sql.from_clause("analytics.orders", sampled=False, cfg=cfg)
     sampled = sql.from_clause("analytics.orders", sampled=True, cfg=cfg)
-    assert full == "analytics.orders"
+    # Identifiers are quoted per-dialect (B7) — each part independently, never the
+    # whole dotted name as one token.
+    assert full == '"analytics"."orders"'
+    assert '"analytics"."orders"' in sampled
     assert "USING SAMPLE reservoir(500 ROWS)" in sampled
     assert "REPEATABLE (7)" in sampled  # deterministic across runs
 
