@@ -25,6 +25,8 @@ from decimal import Decimal
 from math import ceil, floor
 from typing import SupportsInt, cast
 
+from sqlglot import exp
+
 from sqbyl_runtime.db import Database
 from sqbyl_runtime.models import Column, Dialect, Profile, ScalarBound, TableSemantics
 
@@ -111,21 +113,43 @@ class _ProfileSql:
 
     def __init__(self, dialect: Dialect) -> None:
         self.dialect = dialect
+        # sqbyl uses 'postgresql'; sqlglot's dialect is named 'postgres'. The rest match.
+        self._sqlglot_name = "postgres" if dialect is Dialect.postgresql else dialect.value
 
     @property
     def quantiles_in_sql(self) -> bool:
         return self.dialect in self._QUANTILE_IN_SQL
 
+    def quote(self, ident: str) -> str:
+        """Quote a single identifier for this dialect. Every column/table name the
+        profiler interpolates into SQL goes through here — real-world schemas (e.g.
+        BIRD's ``Charter School (Y/N)``) carry spaces and parentheses that break
+        unquoted SQL and the read-only guard's parser alike."""
+        return exp.to_identifier(ident, quoted=True).sql(dialect=self._sqlglot_name)
+
+    def quote_table(self, qualified: str) -> str:
+        """Quote a ``schema.name`` table reference, quoting each part independently."""
+        schema, dot, name = qualified.partition(".")
+        if not dot:  # unqualified; quote the whole thing as one identifier
+            return self.quote(schema)
+        table = exp.Table(
+            this=exp.to_identifier(name, quoted=True),
+            db=exp.to_identifier(schema, quoted=True),
+        )
+        return table.sql(dialect=self._sqlglot_name)
+
     def from_clause(self, table: str, *, sampled: bool, cfg: ProfileConfig) -> str:
-        """A FROM-clause source. When sampling, wrap in a subquery so the sample
-        binds to the table and the outer WHERE/GROUP BY still apply."""
+        """A FROM-clause source (the table name already quoted). When sampling, wrap in
+        a subquery so the sample binds to the table and the outer WHERE/GROUP BY apply."""
+        quoted = self.quote_table(table)
         if not sampled:
-            return table
-        return f"({self._sample_select(table, cfg)}) AS _sqbyl_sample"
+            return quoted
+        return f"({self._sample_select(quoted, cfg)}) AS _sqbyl_sample"
 
     def _sample_select(self, table: str, cfg: ProfileConfig) -> str:
-        """A row-sample SELECT. Only used past ``sample_over_rows``; each dialect gets a
-        deterministic-where-possible form (untested dialects are documented best-effort)."""
+        """A row-sample SELECT over an already-quoted ``table`` reference. Only used past
+        ``sample_over_rows``; each dialect gets a deterministic-where-possible form
+        (untested dialects are documented best-effort)."""
         seed = cfg.sample_seed
         if self.dialect is Dialect.duckdb:
             return (
@@ -177,7 +201,7 @@ def profile_table(
     opts = options or ProfileOptions()
     sql = _ProfileSql(db.dialect)
 
-    n_rows = _as_int(db.execute(f"SELECT count(*) FROM {table.table}").rows[0][0])
+    n_rows = _as_int(db.execute(f"SELECT count(*) FROM {sql.quote_table(table.table)}").rows[0][0])
     sampled = n_rows > cfg.sample_over_rows
     source = sql.from_clause(table.table, sampled=sampled, cfg=cfg)
 
@@ -201,7 +225,7 @@ def _profile_column(
     opts: ProfileOptions,
 ) -> Column:
     kind = _classify(column.type)
-    col = column.name
+    col = sql.quote(column.name)
 
     selects = [
         "count(*) AS n",
@@ -288,7 +312,14 @@ def _percentile_cont(sorted_values: list[float], q: float) -> float | None:
 def _as_float(value: object) -> float | None:
     if value is None:
         return None
-    return float(value)  # type: ignore[arg-type]
+    # SQLite/MySQL are dynamically typed: a column classified numeric can still hold
+    # ``''`` or other non-numeric junk for "missing". The in-SQL percentile path
+    # (DuckDB/Postgres) coerces/ignores those; the Python path must match that
+    # tolerance rather than crash the whole `profile` command (B8).
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
 
 
 def _as_int(value: object) -> int:

@@ -11,6 +11,30 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.3] — 2026-07-09
+
+Two profiler crashes surfaced once 0.4.2 let `profile` actually run on the BIRD/Spider
+SQLite databases — both on exactly the "dirty" real-world schemas those benchmarks are
+built from, and both aborting the whole `profile` command on the affected table.
+
+### Fixed
+
+- **The profiler now quotes every identifier it emits.** `profile` interpolated raw column
+  and table names straight into SQL, so it crashed the moment it met a real-world name with a
+  space or parenthesis — e.g. BIRD `california_schools`'s `Charter School (Y/N)` or
+  `Enrollment (K-12)`. The read-only guard's parser rejected the unquoted SQL
+  (`UnparseableSqlError`) and, because that guard runs before execution, the whole `profile`
+  command aborted and *no* column on the table got profiled — losing profile grounding on
+  exactly the messy schemas where it matters most. The profiler now quotes column and table
+  names per-dialect (`sqlglot`, each part of a `schema.name` independently) everywhere it
+  builds SQL: the row count, the stats query, sampling, top-k, and the Python quantile pull.
+- **The Python percentile path tolerates non-numeric junk in a "numeric" column.** SQLite and
+  MySQL are dynamically typed, so a column classified numeric can still hold `''` (empty string)
+  for a missing value. The Python quantile helper (SQLite/MySQL) cast every value with `float()`
+  and crashed on `''` — aborting `profile` on the table, e.g. Spider `wta_1`. Non-numeric values
+  are now dropped before the cast, matching how the in-SQL percentile path (DuckDB/Postgres)
+  coerces or ignores them.
+
 ## [0.4.2] — 2026-07-09
 
 Makes SQLite first-class for the dev toolkit and hardens the eval loop — findings from
