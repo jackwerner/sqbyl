@@ -11,6 +11,36 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-07-09
+
+Makes SQLite first-class for the dev toolkit and hardens the eval loop — findings from
+pointing sqbyl at the BIRD and Spider benchmarks, whose databases ship as SQLite.
+
+### Fixed
+
+- **`introspect` now works on SQLite.** `discover_tables` queried `information_schema.tables`,
+  which SQLite doesn't have, so the whole dev pipeline was unreachable at step one on a declared
+  dialect. It now falls back to the SQLAlchemy inspector for SQLite (the same seam introspection
+  already uses for columns and keys); Postgres/DuckDB/MySQL keep the existing path.
+- **`profile` now works on SQLite — and correctly per-dialect.** The profiler branched only
+  DuckDB-vs-else-Postgres, so every other dialect silently got Postgres SQL and SQLite's
+  `percentile_cont … WITHIN GROUP` failed to parse — disabling the profile-grounded value hints
+  that are one of the agent's biggest accuracy levers. Reworked into a real per-dialect strategy:
+  dialects with an in-SQL percentile aggregate (DuckDB/Postgres/Snowflake/BigQuery) embed it;
+  those without (SQLite/MySQL) compute quantiles in Python from the column's values. Sampling
+  clauses are per-dialect too. (SQLite is tested; MySQL/Snowflake/BigQuery use documented syntax
+  but are not exercised against a live server.)
+- **One unparseable model generation no longer aborts a whole eval run.** The pipeline's
+  static-validation step caught only static-validation and write errors, so an `UnparseableSqlError`
+  (e.g. the unquoted spaced identifiers common in real-world schemas) propagated out of `ask()`
+  and lost every other question's result. It's now caught and becomes a wrong answer that feeds
+  self-repair, like any other bad generation.
+
+### Internal
+
+- CI now exercises SQLite for the toolkit (`test_sqlite_toolkit.py`), closing the coverage gap
+  that let the SQLite introspect/profile breakage ship — CI previously ran only DuckDB and Postgres.
+
 ## [0.4.1] — 2026-07-08
 
 ### Fixed
