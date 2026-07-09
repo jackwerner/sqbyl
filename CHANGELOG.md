@@ -11,6 +11,26 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.5] — 2026-07-09
+
+Closes the last of the Sonnet structured-output parse sites: the agent's answer path is now
+model-portable to a flagship model out of the box, matching the annotate (B9) and eval (B4)
+guards already in place.
+
+### Fixed
+
+- **The agent's answer path no longer crashes on a generation that omits `sql`, and one bad
+  generation can't abort an eval run (finding B10).** `claude-sonnet-5` sometimes returns a
+  generation with `plan`/`used_assets` but no `sql` (folding the query into the plan or emitting
+  a clarification); the unguarded `response.parse(AgentGeneration)` let that `ValidationError`
+  propagate out of `ask()` → `score_run()` and lose every other question. The parse is now
+  guarded: a malformed generation becomes a failed attempt that feeds self-repair (with a prompt
+  naming the missing `sql` field), and if every attempt fails the question gets a clean error
+  verdict instead of an exception. `AgentGeneration` also unwraps a one-level nested wrapper
+  (mirrors the annotator's B9 fix), so a wrapped-but-complete answer parses without a repair
+  round. This is the same "one bad output nukes the batch" fix as the 0.4.2 eval guard (B4) and
+  the 0.4.4 annotate guard (B9), applied at the generation-parse step.
+
 ## [0.4.4] — 2026-07-09
 
 More BIRD/Spider hardening from the benchmark re-run: the agent now handles messy

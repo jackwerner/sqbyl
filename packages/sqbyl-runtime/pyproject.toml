@@ -1,6 +1,6 @@
 [project]
 name = "sqbyl-runtime"
-version = "0.4.4"
+version = "0.4.5"
 description = "The minimal, dependency-light sqbyl runtime: load a release + ask() + structured logging."
 readme = "README.md"
 requires-python = ">=3.11"
