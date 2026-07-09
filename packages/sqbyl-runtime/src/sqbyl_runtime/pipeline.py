@@ -23,7 +23,13 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from sqbyl_runtime.context import CompiledContext, ProjectKnowledge
-from sqbyl_runtime.db import Database, QueryResult, StaticValidationError, WriteAttemptError
+from sqbyl_runtime.db import (
+    Database,
+    QueryResult,
+    StaticValidationError,
+    UnparseableSqlError,
+    WriteAttemptError,
+)
 from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, Message, Usage
 from sqbyl_runtime.state.traces import Span, TraceWriter, llm_call_span, new_span_id, new_trace_id
 
@@ -289,7 +295,9 @@ def _validate_and_execute(db: Database, sql: str) -> tuple[QueryResult | None, s
     or ``(None, error)`` so the caller can self-repair without re-running the query."""
     try:
         db.explain(sql)
-    except (StaticValidationError, WriteAttemptError) as exc:
+    except (StaticValidationError, UnparseableSqlError, WriteAttemptError) as exc:
+        # An unparseable generation is a wrong answer that feeds self-repair, not a
+        # crash that aborts the whole eval run.
         return None, str(exc)
     try:
         return db.execute(sql), None
