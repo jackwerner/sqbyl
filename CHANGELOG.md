@@ -35,6 +35,10 @@ pointing sqbyl at the BIRD and Spider benchmarks, whose databases ship as SQLite
   (e.g. the unquoted spaced identifiers common in real-world schemas) propagated out of `ask()`
   and lost every other question's result. It's now caught and becomes a wrong answer that feeds
   self-repair, like any other bad generation.
+- **`sqbyl --version` (and `sqbyl_runtime.__version__`) now report the real version.** Both
+  packages' `__version__` was a hardcoded `"0.0.0"` placeholder, so `--version` printed `0.0.0`
+  regardless of what was installed (since 0.4.0). It now resolves from installed package metadata
+  (`importlib.metadata`), falling back to `0.0.0` only when run from a source tree with no metadata.
 
 ### Internal
 
