@@ -112,6 +112,64 @@ def test_unparseable_sql_fails_gracefully(knowledge: ProjectKnowledge, db: Datab
     db.close()
 
 
+def test_generation_missing_sql_feeds_self_repair(
+    knowledge: ProjectKnowledge, db: Database
+) -> None:
+    # Finding B10: a stronger model (claude-sonnet-5) sometimes returns {plan, used_assets}
+    # with no `sql`. The parse must not crash the run — it's a failed attempt that self-repairs.
+    llm = MockLLMClient(
+        [
+            structured_reply({"plan": "I will count the orders.", "used_assets": []}),  # no sql
+            _gen("SELECT COUNT(*) AS n FROM analytics.orders"),
+        ]
+    )
+    result = ask("count orders", knowledge=knowledge, db=db, llm=llm, model="m")
+    assert result.ok
+    assert result.attempts == 2 and result.repaired is True
+    assert result.rows == [[2000]]
+    # The repair turn told the model exactly what it omitted.
+    assert "sql" in llm.requests[1].messages[-1].content.lower()
+    db.close()
+
+
+def test_all_generations_unparseable_yield_error_not_exception(
+    knowledge: ProjectKnowledge, db: Database
+) -> None:
+    # If every attempt is malformed, the question gets a clean error verdict — never an
+    # exception out of ask() that would abort every other question in an eval batch (B10).
+    llm = MockLLMClient([structured_reply({"plan": "no sql here", "used_assets": []})] * 3)
+    result = ask("q", knowledge=knowledge, db=db, llm=llm, model="m", self_repair_attempts=2)
+    assert not result.ok
+    assert result.attempts == 3
+    assert result.sql == "" and result.rows == []
+    assert result.error is not None
+    db.close()
+
+
+def test_nested_wrapper_generation_parses_without_a_repair_round(
+    knowledge: ProjectKnowledge, db: Database
+) -> None:
+    # B9-style portability at the answer path: a generation wrapped one level deep parses on
+    # the first attempt instead of burning a self-repair round.
+    llm = MockLLMClient(
+        [
+            structured_reply(
+                {
+                    "agent_generation": {
+                        "plan": "count",
+                        "sql": "SELECT COUNT(*) AS n FROM analytics.orders",
+                        "used_assets": [],
+                    }
+                }
+            )
+        ]
+    )
+    result = ask("count", knowledge=knowledge, db=db, llm=llm, model="m")
+    assert result.ok and result.attempts == 1
+    assert result.rows == [[2000]]
+    db.close()
+
+
 def test_write_sql_is_refused_not_executed(knowledge: ProjectKnowledge, db: Database) -> None:
     # Even if the model emits a write, the read-only guard refuses it (it never runs).
     llm = MockLLMClient([_gen("DELETE FROM analytics.orders")] * 3)

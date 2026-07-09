@@ -17,10 +17,11 @@ Multi-turn is just a thread of these with prior turns prepended — not modeled 
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from sqbyl_runtime.context import CompiledContext, ProjectKnowledge
 from sqbyl_runtime.db import (
@@ -65,6 +66,24 @@ class AgentGeneration(BaseModel):
         default_factory=list,
         description="Names of any trusted assets you relied on (for citation). Empty if none.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap_nested_shape(cls, data: Any) -> Any:
+        """Accept a one-level nested wrapper some models emit instead of the flat shape.
+
+        A current, stronger model can wrap the object one level — e.g.
+        ``{"agent_generation": {"plan": ..., "sql": ...}}`` — rather than the flat fields the
+        schema declares. Unwrap that so a portability quirk doesn't force a needless repair
+        round (mirrors the annotator's B9 fix). A near-miss the wrapper can't fix — a payload
+        that genuinely omits ``sql`` — still raises, and the generate loop routes it into
+        self-repair (finding B10). Only fires when the flat fields are absent and a lone nested
+        object carries them, so a well-formed payload is untouched."""
+        if isinstance(data, dict) and "sql" not in data and "plan" not in data:
+            nested = [v for v in data.values() if isinstance(v, dict) and "sql" in v]
+            if len(nested) == 1:
+                return nested[0]
+        return data
 
 
 class AgentAttempt(BaseModel):
@@ -222,7 +241,19 @@ def ask(
                     parent_span_id=run_span.span_id,
                 )
             )
-        gen = response.parse(AgentGeneration)
+        try:
+            gen = response.parse(AgentGeneration)
+        except (ValidationError, ValueError) as exc:
+            # A malformed generation — e.g. a model that omits the required `sql` field — is a
+            # failed attempt that feeds self-repair, never an exception that propagates out of
+            # ask() and aborts an entire eval run (finding B10; the same posture as the
+            # SQL-validate guard below / B4, at the parse step one level up).
+            parse_error = f"the response did not match the required answer schema: {exc}"
+            attempts.append(AgentAttempt(sql="", plan="", error=parse_error))
+            raw = response.text or json.dumps(response.structured or {})
+            messages.append(Message(role="assistant", content=raw))
+            messages.append(Message(role="user", content=_reparse_prompt(parse_error)))
+            continue
         last_gen = gen
 
         rows, error = _validate_and_execute(db, gen.sql)
@@ -269,20 +300,21 @@ def ask(
         messages.append(Message(role="user", content=_repair_prompt(error)))
 
     # Exhausted all repair attempts.
-    assert last_gen is not None
     _finish(trace_writer, run_span, status="error")
+    # ``last_gen`` is None only when *every* attempt failed to even parse (finding B10): there's
+    # no SQL to report, but the question still gets a clean error verdict, never an exception.
     return AgentResult(
         question=question,
-        plan=last_gen.plan,
-        sql=last_gen.sql,
-        used_assets=last_gen.used_assets,
+        plan=last_gen.plan if last_gen is not None else "",
+        sql=last_gen.sql if last_gen is not None else "",
+        used_assets=last_gen.used_assets if last_gen is not None else [],
         selected_tables=context.selected_tables,
         selection_strategy=context.selection_strategy,
         selection_fell_back=context.selection_fell_back,
         selection_notes=context.notes,
         attempts=len(attempts),
         repaired=len(attempts) > 1,
-        error=attempts[-1].error,
+        error=attempts[-1].error if attempts else "the model produced no parseable answer",
         usage=total_usage,
         latency_ms=_elapsed_ms(started),
         trace_id=trace_id,
@@ -404,6 +436,18 @@ def _repair_prompt(error: str) -> str:
         "That SQL failed with the following error:\n\n"
         f"{error}\n\n"
         "Return a corrected single read-only SELECT. Keep it grounded in the schema."
+    )
+
+
+def _reparse_prompt(error: str) -> str:
+    """Repair prompt for a generation that didn't match the schema (vs. one whose SQL ran and
+    errored). Names the miss so the model fills the required ``sql`` field on the next try."""
+    return (
+        "Your previous response could not be read as an answer:\n\n"
+        f"{error}\n\n"
+        "Reply with a JSON object holding `plan`, `sql`, and `used_assets`. The `sql` field is "
+        "required and must contain a single read-only SELECT that answers the question — do not "
+        "put the query only in `plan`."
     )
 
 
