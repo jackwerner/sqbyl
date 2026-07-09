@@ -16,8 +16,9 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, Message
 from sqbyl_runtime.models import Column, Profile, TableSemantics
@@ -49,6 +50,24 @@ class TableAnnotation(BaseModel):
     synonyms: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
     columns: list[ColumnAnnotation] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _unwrap_nested_shape(cls, data: Any) -> Any:
+        """Accept the nested wrapper some models emit instead of the flat shape.
+
+        ``claude-sonnet-5`` intermittently (content-dependent, deterministic at temp 0)
+        returns the annotation wrapped in a single object field — e.g.
+        ``{"table_description": {"description": ..., "confidence": ..., "columns": ...}}``
+        — rather than the flat fields the schema declares. Unwrap that one level so a
+        model's output shape doesn't abort the annotate run (finding B9). Only fires when
+        the flat ``description`` is absent and a lone nested object plainly carries it, so
+        a well-formed payload is never touched."""
+        if isinstance(data, dict) and "description" not in data:
+            nested = [v for v in data.values() if isinstance(v, dict) and "description" in v]
+            if len(nested) == 1:
+                return nested[0]
+        return data
 
 
 def annotate_table(
@@ -184,9 +203,19 @@ def _detect_collisions(
     synonyms (or vice-versa): the word points at both columns, so which one the agent picks is
     a coin flip the metadata doesn't resolve. ``topical`` tokens (the table's own entity words —
     see :func:`_topical_tokens`) are excluded: they're the table's subject, not a real contest.
-    Deterministic and $0. Sorted, de-duplicated by (token, column-pair)."""
+    Tokens shared across ``_GENERIC_TOKEN_MIN_DEGREE`` or more columns are dropped as generic
+    table vocabulary rather than a two-way contest (finding B6). Deterministic and $0. Sorted,
+    de-duplicated by (token, column-pair)."""
     syn_tokens = {name: _content_tokens(list(syns)) for name, syns in columns}
     id_tokens = {name: _content_tokens([name, *syns]) for name, syns in columns}
+
+    # Degree of a token = how many columns' vocabulary (name + synonyms) it appears in. A word
+    # spread across many columns is table vocabulary, not a contest between two of them.
+    degree: dict[str, int] = {}
+    for toks in id_tokens.values():
+        for tok in toks:
+            degree[tok] = degree.get(tok, 0) + 1
+
     out: list[SynonymCollision] = []
     seen: set[tuple[str, tuple[str, str]]] = set()
     for i, (a_name, _) in enumerate(columns):
@@ -195,6 +224,8 @@ def _detect_collisions(
                 syn_tokens[b_name] & id_tokens[a_name]
             )
             for tok in sorted(shared - topical):
+                if degree[tok] >= _GENERIC_TOKEN_MIN_DEGREE:
+                    continue  # generic table vocabulary, not a resolvable pairwise contest
                 pair = (a_name, b_name) if a_name <= b_name else (b_name, a_name)
                 if (tok, pair) not in seen:
                     seen.add((tok, pair))
@@ -224,6 +255,15 @@ def detect_semantics_collisions(table: TableSemantics) -> list[SynonymCollision]
         [(c.name, list(c.synonyms)) for c in table.columns],
         topical=_topical_tokens(table.table),
     )
+
+
+# A token shared by this many columns (or more) is generic table vocabulary — a triplicated
+# admin block (``AdmFName1/2/3``, ``AdmLName1/2/3``, ``AdmEmail1/2/3``) has every column
+# answering to "administrator"/"name", so flagging all O(n²) pairs that share such a word
+# buries the one real contest and would cap half the table's confidence (finding B6, BIRD
+# `california_schools`). A genuine contest is two — occasionally a few — columns fighting over
+# one word; past that it isn't a disambiguation a per-pair warning can resolve.
+_GENERIC_TOKEN_MIN_DEGREE = 3
 
 
 # A contested column can't be trusted enough to auto-apply, so its confidence is capped below

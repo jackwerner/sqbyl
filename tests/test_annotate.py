@@ -62,6 +62,41 @@ def test_prompt_is_grounded_in_profile(profiled_orders: TableSemantics) -> None:
     assert llm.requests[0].system is not None and "grounded" in llm.requests[0].system
 
 
+def test_accepts_nested_table_description_wrapper() -> None:
+    # Finding B9: claude-sonnet-5 sometimes wraps the annotation in a single object field
+    # instead of the flat shape. TableAnnotation unwraps it rather than raising.
+    from sqbyl.annotate import TableAnnotation
+
+    wrapped = {
+        "table_description": {
+            "description": "One row per loan.",
+            "confidence": 0.88,
+            "columns": [{"name": "loan_state", "description": "d", "confidence": 0.7}],
+        }
+    }
+    ann = TableAnnotation.model_validate(wrapped)
+    assert ann.description == "One row per loan." and ann.confidence == 0.88
+    assert ann.columns[0].name == "loan_state"
+    # A well-formed flat payload is untouched (the guard only fires when description is absent).
+    flat = TableAnnotation.model_validate({"description": "d", "confidence": 0.5})
+    assert flat.description == "d"
+
+
+def test_annotate_table_parses_the_wrapped_shape(profiled_orders: TableSemantics) -> None:
+    wrapped = structured_reply(
+        {
+            "table_annotation": {
+                "description": "One row per order.",
+                "confidence": 0.9,
+                "columns": [{"name": "order_id", "description": "pk", "confidence": 0.99}],
+            }
+        }
+    )
+    annotation, _ = annotate_table(MockLLMClient([wrapped]), profiled_orders, model="m")
+    assert annotation.description == "One row per order."
+    assert annotation.columns[0].name == "order_id"
+
+
 def test_confidence_is_populated(profiled_orders: TableSemantics) -> None:
     annotation, _ = annotate_table(MockLLMClient([_REPLY]), profiled_orders, model="m")
     assert annotation.confidence == 0.9

@@ -11,6 +11,40 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.4.4] — 2026-07-09
+
+More BIRD/Spider hardening from the benchmark re-run: the agent now handles messy
+identifiers, `annotate` survives a stronger model's output shape, and the wide-table
+collision noise is quieted.
+
+### Fixed
+
+- **`annotate` no longer crashes on `claude-sonnet-5`'s output shape, and one bad table
+  can't abort the batch (finding B9).** Sonnet intermittently returns a table annotation
+  wrapped in a nested object (`{"table_description": {…}}`) instead of the flat fields the
+  schema declares; `TableAnnotation` now unwraps that one level (a pydantic `before`
+  validator) rather than raising. Independently, the per-table loop is now guarded — a table
+  that still fails to parse is skipped with a warning and the run continues, keeping the
+  tables already annotated instead of losing the whole batch (the same failure shape as the
+  0.4.2 eval fix).
+
+### Changed
+
+- **The agent is shown messy identifiers pre-quoted (finding B5).** Real-world column and
+  table names with spaces or special characters (BIRD's `Charter School (Y/N)`,
+  `Enrollment (K-12)`) now reach the agent already quoted for the project's dialect, with a
+  one-line reminder to reproduce them exactly — so it copies the correct token instead of
+  emitting unparseable unquoted SQL. Applied per identifier: clean names render exactly as
+  before, so existing prompts (and their cassettes) are byte-for-byte unchanged.
+- **Synonym-collision detection no longer floods on wide real-world tables (finding B6).**
+  A word shared across three or more columns is now treated as generic table vocabulary and
+  dropped, rather than raising a warning for every column pair that happens to share it. On
+  schemas with triplicated families like BIRD `california_schools`'s `AdmFName1/2/3` /
+  `AdmLName1/2/3` / `AdmEmail1/2/3` — where every column answers to "administrator"/"name" —
+  this collapses dozens of unactionable warnings to (at most) the genuine two-way contests,
+  and stops the cap from needlessly demoting half the table's confidence. A token contested by
+  exactly two columns (the `cost_price` vs `unit_price` "price" case) is unchanged.
+
 ## [0.4.3] — 2026-07-09
 
 Two profiler crashes surfaced once 0.4.2 let `profile` actually run on the BIRD/Spider
