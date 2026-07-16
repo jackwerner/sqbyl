@@ -38,6 +38,12 @@ class SqbylPaths:
         """Append-only 👍/👎 from `sqbyl serve`/`run` — eval/synth candidates (spec §7)."""
         return self.root / "feedback.jsonl"
 
+    @property
+    def annotate_review(self) -> Path:
+        """Review proposals from the last `annotate` run — un-described columns the annotator
+        wasn't confident about, surfaced in the console queue (finding B11 / spec §5.5)."""
+        return self.root / "annotate_review.json"
+
     def ensure(self) -> SqbylPaths:
         """Create the directory skeleton if missing. Returns self for chaining."""
         self.root.mkdir(parents=True, exist_ok=True)

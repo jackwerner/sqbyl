@@ -449,12 +449,13 @@ def _annotate_wave(
     unit is then metered durably to ``.sqbyl/usage.db`` via the shared meter. A table that
     fails to annotate degrades to a card (its siblings still complete) — spec §5.5.
     """
-    from sqbyl.annotate import annotate_table, flag_synonym_collisions
+    from sqbyl.annotate import annotate_table, flag_synonym_collisions, reconcile_annotation
     from sqbyl.orchestrator import WorkProduct, WorkUnit
     from sqbyl.yamlio import load_yaml
     from sqbyl_runtime.state.traces import TraceWriter, new_trace_id
 
     model = plan.model
+    threshold = project.manifest.defaults.auto_apply_threshold
     paths = [project.semantics_dir / name for name in plan.annotate_tables]
     # Same OTel-GenAI trace the standalone `sqbyl annotate` writes (invariant 7): the paid
     # work is traced identically whether it runs here or on its own.
@@ -470,7 +471,10 @@ def _annotate_wave(
             # Cap contested synonyms' confidence so they can't auto-apply (finding #2); the
             # collisions themselves are surfaced post-wave (this runs in a worker thread).
             annotation, _ = flag_synonym_collisions(annotation, table_name=table.table)
-            dump_yaml_path(merge_annotation(raw, annotation), path)
+            # Same honesty rules as `sqbyl annotate` (finding B11): never overwrite an existing
+            # note, and withhold a low-confidence guess rather than write it as truth.
+            applied, _ = reconcile_annotation(table, annotation, threshold=threshold)
+            dump_yaml_path(merge_annotation(raw, applied), path)
             return WorkProduct(value=path, usage=response.usage, confidence=annotation.confidence)
 
         return WorkUnit(

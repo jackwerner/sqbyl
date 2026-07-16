@@ -62,6 +62,29 @@ def test_prompt_is_grounded_in_profile(profiled_orders: TableSemantics) -> None:
     assert llm.requests[0].system is not None and "grounded" in llm.requests[0].system
 
 
+def test_numeric_text_magnitude_reaches_the_prompt() -> None:
+    # UX risk 1: for A4 the flag alone doesn't disambiguate "population" from "area" — the
+    # *magnitude* does. A high-cardinality numbers-as-text column must render its numeric range
+    # (and an existing catalog note, if any) into the prompt the model actually sees.
+    from sqbyl_runtime.models import Column, Profile, TableSemantics
+
+    table = TableSemantics(
+        table="bird.district",
+        columns=[
+            Column(
+                name="A4",
+                type="text",
+                profile=Profile(distinct=1200, numeric_text=True, min=52, max=1_200_000),
+            )
+        ],
+    )
+    llm = MockLLMClient([_REPLY])
+    annotate_table(llm, table, model="m")
+    prompt = llm.requests[0].messages[0].content
+    assert "range=52..1200000" in prompt  # the magnitude, not just the flag
+    assert "stored as text but values are numeric" in prompt
+
+
 def test_accepts_nested_table_description_wrapper() -> None:
     # Finding B9: claude-sonnet-5 sometimes wraps the annotation in a single object field
     # instead of the flat shape. TableAnnotation unwraps it rather than raising.

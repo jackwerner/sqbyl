@@ -1508,9 +1508,15 @@ def _annotate(args: list[str]) -> int:
     at ``--budget`` (the full guided/--auto budget machinery is Phase 7): once the
     metered total reaches the cap, remaining tables are left for a later run.
     """
-    from sqbyl.annotate import annotate_table, flag_synonym_collisions
+    from sqbyl.annotate import (
+        annotate_table,
+        flag_synonym_collisions,
+        reconcile_annotation,
+        save_annotation_review,
+    )
     from sqbyl.estimates import annotate_estimate
     from sqbyl.llm import build_llm_client
+    from sqbyl.models.attention import Decision
     from sqbyl.project import Project
     from sqbyl.semantics_io import dump_yaml_path, merge_annotation
     from sqbyl.yamlio import load_yaml
@@ -1556,6 +1562,10 @@ def _annotate(args: list[str]) -> int:
         attributes={"gen_ai.operation.name": "chat", "sqbyl.tables": len(paths)},
     )
 
+    # Confident, un-described columns auto-fill; anything below this routes to the review queue
+    # instead of being written as a confident guess (finding B11 / spec §5.5).
+    threshold = project.manifest.defaults.auto_apply_threshold
+    reviews: list[Decision] = []
     done, skipped, stopped = 0, 0, False
     with UsageStore(state.usage_db) as store:
         meter = SpendMeter(budget=budget, store=store, command="annotate")
@@ -1585,17 +1595,27 @@ def _annotate(args: list[str]) -> int:
                 continue
             # $0 pass: flag synonyms that could equally describe a sibling column and cap their
             # confidence so a contested term isn't silently auto-applied (finding #2).
-            annotation, collisions = flag_synonym_collisions(annotation)
-            dump_yaml_path(merge_annotation(raw, annotation), path)
+            annotation, collisions = flag_synonym_collisions(annotation, table_name=table.table)
+            # Reconcile against existing catalog/human notes: never overwrite an authoritative
+            # description, and hold low-confidence guesses for review instead of writing them.
+            applied, table_reviews = reconcile_annotation(table, annotation, threshold=threshold)
+            reviews += table_reviews
+            dump_yaml_path(merge_annotation(raw, applied), path)
             meter.record(response.usage, model=model, role="annotator", run_id=run_span.trace_id)
             done += 1
             print(f"  ✓ {path.name}  (table confidence {annotation.confidence:.2f})")
             for collision in collisions:
                 print(f"    ⚠ {collision.describe()}")
         spent = meter.spent
+    save_annotation_review(state.annotate_review, reviews)
     trace_writer.write(run_span.end(status="ok" if not stopped else "error"))
     tail = f", {skipped} skipped" if skipped else ""
     print(f"done — annotated {done}/{len(paths)}{tail}, metered ${spent:.4f}")
+    if reviews:
+        print(
+            f"  ⚑ {len(reviews)} column(s) held for review (low confidence) — "
+            "open `sqbyl review` to accept/edit"
+        )
     return 0
 
 

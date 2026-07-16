@@ -107,6 +107,32 @@ def test_profile_quotes_identifiers_with_spaces_and_parens(dirty_sqlite_path: Pa
     assert by_name["Charter School (Y/N)"].sample_values == [0, 1]
 
 
+def test_numbers_stored_as_text_are_flagged(tmp_path: Path) -> None:
+    # Finding B12: a text-declared column whose values are all numeric is flagged so annotate
+    # can surface it and the agent can CAST — but a genuine text column is not.
+    path = tmp_path / "coded.sqlite"
+    con = sqlite3.connect(path)
+    con.execute('CREATE TABLE districts (id INTEGER PRIMARY KEY, "A4" TEXT, name TEXT)')
+    con.executemany(
+        'INSERT INTO districts ("A4", name) VALUES (?, ?)',
+        [(str(1000 + i), f"town {i}") for i in range(30)],
+    )
+    con.commit()
+    con.close()
+    with Database.connect(str(path), dialect=Dialect.sqlite) as db:
+        tables = {t.table: t for t in introspect(db)}
+        profiled = profile_table(db, tables["main.districts"])
+    by_name = {c.name: c for c in profiled.columns}
+    a4 = by_name["A4"].profile
+    assert a4 is not None and a4.numeric_text is True  # text column holding numbers
+    # The magnitude must reach the profile (B12 / UX risk): the range is what disambiguates
+    # "population" from "area", not the flag alone. Values were 1000..1029.
+    assert a4.min == 1000.0 and a4.max == 1029.0
+    name = by_name["name"].profile
+    assert name is not None and name.numeric_text is False  # genuine text, not flagged
+    assert name.min is None and name.max is None  # genuine text has no numeric range
+
+
 def test_profile_tolerates_empty_string_in_numeric_column(dirty_sqlite_path: Path) -> None:
     # B8: '' in a dynamically-typed numeric column must not crash the Python percentile
     # path — it's dropped like the SQL path would, and the real values still profile.

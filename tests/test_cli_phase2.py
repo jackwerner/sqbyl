@@ -89,14 +89,19 @@ def test_annotate_cli_writes_descriptions_and_meters(
     mock = MockLLMClient([_reply("A customer."), _reply("An order.")])
     monkeypatch.setattr("sqbyl.llm.build_llm_client", lambda *a, **k: mock)
 
+    # The dogfood project is already authored, so its descriptions are authoritative.
+    original_desc = load_yaml((project / "semantics" / "orders.yaml").read_text())["description"]
+    assert original_desc and original_desc != "An order."
+
     code = main(["annotate", str(project)])
     assert code == 0
     out = capsys.readouterr().out
     assert "estimated ~$" in out
 
-    # Descriptions landed in the YAML; profile blocks were preserved.
+    # Honesty rule (finding B11): an existing authoritative description is never overwritten —
+    # the draft "An order." is dropped, the human's text survives. Profile blocks preserved.
     orders = load_yaml((project / "semantics" / "orders.yaml").read_text())
-    assert orders["description"] == "An order."
+    assert orders["description"] == original_desc  # not clobbered by the draft
     status = next(c for c in orders["columns"] if c["name"] == "status")
     assert status["profile"]["distinct"] == 3  # untouched by annotate
 

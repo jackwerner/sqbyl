@@ -14,12 +14,15 @@ a paid command it is metered through the cost stub from day one (invariant 5).
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from sqbyl.models.attention import Decision, DecisionKind
 from sqbyl_runtime.llm.base import LLMClient, LLMRequest, LLMResponse, Message
 from sqbyl_runtime.models import Column, Profile, TableSemantics
 from sqbyl_runtime.state.traces import TraceWriter, llm_call_span, new_trace_id
@@ -28,9 +31,14 @@ _SYSTEM = (
     "You are a data analyst documenting a SQL table for a text-to-SQL agent. "
     "Write concise, factual descriptions grounded in the COLUMN PROFILE STATISTICS "
     "provided (ranges, distinct counts, sample values) — infer units and meaning from "
-    "the data, never invent facts you can't support. Add a few natural-language "
-    "synonyms a user might say. Give each description a confidence in [0,1]: high when "
-    "the data makes the meaning obvious, low when the column is cryptic."
+    "the data, never invent facts you can't support. "
+    "When a column already has an EXISTING NOTE (from the database catalog or a human), treat "
+    "it as authoritative: reconcile your description with it rather than contradicting it, and "
+    "if the data genuinely conflicts with the note, say so plainly and lower your confidence "
+    "instead of silently overriding it. "
+    "Add a few natural-language synonyms a user might say. Give each description a confidence "
+    "in [0,1]: high when the data (and any note) make the meaning obvious, low when the column "
+    "is cryptic, coded, or you are guessing — a low confidence routes it to a human for review."
 )
 
 
@@ -295,17 +303,19 @@ def flag_synonym_collisions(
 
 
 def apply_annotation(table: TableSemantics, annotation: TableAnnotation) -> TableSemantics:
-    """Merge drafted descriptions/synonyms onto a table, preserving its profile.
+    """Merge drafted descriptions/synonyms onto a table, preserving its profile — **fill-only**.
 
-    Only ``description`` and ``synonyms`` are written (the durable authoring fields);
-    profiling stays as profiled. Columns are matched by name; unknown names are ignored.
-    """
+    Only ``description`` and ``synonyms`` are written (the durable authoring fields); profiling
+    stays as profiled. Mirrors :func:`~sqbyl.semantics_io.merge_annotation`'s honesty rules
+    (finding B11): a non-empty existing description is authoritative and never overwritten (the
+    draft fills only a blank slot), and synonyms are unioned, not replaced. Columns are matched
+    by name; unknown names are ignored."""
     by_name = {c.name: c for c in annotation.columns}
     columns = [
         col.model_copy(
             update={
-                "description": by_name[col.name].description,
-                "synonyms": by_name[col.name].synonyms,
+                "description": _fill(col.description, by_name[col.name].description),
+                "synonyms": _union(col.synonyms, by_name[col.name].synonyms),
             }
         )
         if col.name in by_name
@@ -314,18 +324,144 @@ def apply_annotation(table: TableSemantics, annotation: TableAnnotation) -> Tabl
     ]
     return table.model_copy(
         update={
-            "description": annotation.description,
-            "synonyms": annotation.synonyms,
+            "description": _fill(table.description, annotation.description),
+            "synonyms": _union(table.synonyms, annotation.synonyms),
             "columns": columns,
         }
     )
 
 
+def _fill(existing: str | None, draft: str) -> str | None:
+    """Keep a non-empty existing description; only a blank slot is filled with the draft."""
+    if existing and existing.strip():
+        return existing
+    return draft.strip() or None
+
+
+def _union(existing: list[str], drafted: list[str]) -> list[str]:
+    """Additive synonym union preserving order (existing first), deduped case-insensitively."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for s in [*existing, *drafted]:
+        key = s.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(s)
+    return out
+
+
+# Uncertainty routing (finding B11 / spec §5.5 "route attention"): a column the annotator can't
+# ground confidently becomes a review-queue proposal, not a confident sentence written as truth.
+def reconcile_annotation(
+    table: TableSemantics, annotation: TableAnnotation, *, threshold: float
+) -> tuple[TableAnnotation, list[Decision]]:
+    """Reconcile a fresh draft against the table's existing (catalog/human) metadata.
+
+    Returns ``(safe_annotation, decisions)``:
+
+    * ``safe_annotation`` is what's safe to merge — an **un-described** column keeps its draft
+      only when the annotator is confident (``confidence >= threshold``); a low-confidence draft
+      is blanked so :func:`~sqbyl.semantics_io.merge_annotation` withholds it. Columns that
+      already carry an authoritative note are blanked too (merge keeps the note either way; this
+      makes the intent explicit).
+    * ``decisions`` are the withheld low-confidence drafts, surfaced to the console review queue
+      as pre-filled proposals a human accepts/edits — the "LLM proposes, human disposes" pattern
+      the rest of sqbyl already follows, now applied to the build step.
+
+    Existing notes are trusted over the model (inputs are truth), so a mere rewording of a note is
+    never surfaced — only genuine gaps (un-described + uncertain) reach the queue, keeping the
+    signal-to-noise high (the lesson from the synonym-collision work)."""
+    profiles = {c.name: c.profile for c in table.columns}
+    numeric_text = {n for n, p in profiles.items() if isinstance(p, Profile) and p.numeric_text}
+    existing = {c.name: (c.description or "").strip() for c in table.columns}
+    col_type = {c.name: c.type for c in table.columns}
+    decisions: list[Decision] = []
+    cols: list[ColumnAnnotation] = []
+    for col in annotation.columns:
+        has_note = bool(existing.get(col.name))
+        draft = (col.description or "").strip()
+        is_numtext = col.name in numeric_text
+        # Withhold when un-described AND (uncertain, empty, OR numbers-stored-as-text). The last
+        # is the key A4 case: a text column that's actually numeric mislabels *confidently*
+        # ("area" for a population column), so its type mismatch always earns a human look even
+        # when the model is sure — a bounded set (only numeric-text columns), not a queue flood.
+        withhold = (not has_note) and (col.confidence < threshold or not draft or is_numtext)
+        if withhold:
+            note = _numeric_text_note(profiles.get(col.name)) if is_numtext else ""
+            kind = col_type.get(col.name, "?")
+            reason = (
+                "type says text but values are numeric — confirm the meaning"
+                if is_numtext
+                else "the annotator was not confident"
+            )
+            decisions.append(
+                Decision(
+                    id=f"annotate:{table.table}:{col.name}",
+                    kind=DecisionKind.column_description,
+                    title=f"Describe {table.table}.{col.name}",
+                    detail=f"No description yet; {reason} ({kind}).{note}",
+                    suggestion=draft,
+                    confidence=col.confidence,
+                    source=f"annotate:{table.table}",
+                )
+            )
+        # Keep the draft only for a confident, previously-undescribed column; blank it otherwise
+        # so merge withholds it (uncertain) or keeps the authoritative note (already described).
+        keep_draft = draft and not has_note and not withhold
+        cols.append(col.model_copy(update={} if keep_draft else {"description": ""}))
+
+    table_has_note = bool((table.description or "").strip())
+    table_desc = annotation.description
+    if table_has_note or annotation.confidence < threshold:
+        table_desc = ""  # keep an existing note, or withhold a low-confidence table draft
+        if not table_has_note and annotation.confidence < threshold:
+            decisions.append(
+                Decision(
+                    id=f"annotate:{table.table}:__table__",
+                    kind=DecisionKind.table_description,
+                    title=f"Describe table {table.table}",
+                    detail="No table description yet; the annotator was not confident.",
+                    suggestion=annotation.description,
+                    confidence=annotation.confidence,
+                    source=f"annotate:{table.table}",
+                )
+            )
+    return annotation.model_copy(update={"columns": cols, "description": table_desc}), decisions
+
+
+def _numeric_text_note(profile: object) -> str:
+    """Card detail for a numbers-stored-as-text column: name the CAST and, crucially, the
+    magnitude — the range is what tells a reviewer 'population', not 'area in km²' (finding B12)."""
+    rng = ""
+    if isinstance(profile, Profile) and profile.min is not None and profile.max is not None:
+        rng = f" (numeric range {profile.min}..{profile.max})"
+    return f" Values are numbers stored as text{rng} — CAST before comparing/aggregating."
+
+
+def save_annotation_review(path: Path, decisions: list[Decision]) -> None:
+    """Persist a run's review proposals so the console queue can surface them ($0, local)."""
+    payload = [d.model_dump(mode="json") for d in decisions]
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def load_annotation_review(path: Path) -> list[Decision]:
+    """Load persisted annotate review proposals; empty when none have been written."""
+    if not path.exists():
+        return []
+    return [Decision.model_validate(item) for item in json.loads(path.read_text())]
+
+
 def _render_for_annotation(table: TableSemantics) -> str:
-    """Expose the raw profile so the model grounds its descriptions in data."""
-    lines = [f"Table: {table.table}", "", "Columns (name, type, profile):"]
+    """Expose the raw profile — plus any existing catalog/human notes — so the model grounds
+    its descriptions in data and reconciles with (never discards) authoritative metadata."""
+    lines = [f"Table: {table.table}"]
+    if table.description:
+        lines.append(f"Existing table note (authoritative): {table.description}")
+    lines += ["", "Columns (name, type, profile):"]
     for col in table.columns:
         lines.append(f"- {col.name} ({col.type}){_profile_summary(col)}")
+        if col.description:
+            lines.append(f"    existing note (authoritative): {col.description}")
     if table.joins:
         lines.append("")
         lines.append("Joins:")
@@ -340,10 +476,13 @@ def _render_for_annotation(table: TableSemantics) -> str:
 
 
 def _profile_summary(col: Column) -> str:
+    p = col.profile if isinstance(col.profile, Profile) else None
+    text_flag = (
+        "  [stored as text but values are numeric]" if p is not None and p.numeric_text else ""
+    )
     if col.sample_values:
-        return f"  values: {', '.join(str(v) for v in col.sample_values)}"
-    if isinstance(col.profile, Profile):
-        p = col.profile
+        return f"  values: {', '.join(str(v) for v in col.sample_values)}{text_flag}"
+    if p is not None:
         bits = []
         if p.nulls is not None:
             bits.append(f"nulls={p.nulls}")
@@ -352,5 +491,5 @@ def _profile_summary(col: Column) -> str:
         if p.min is not None and p.max is not None:
             bits.append(f"range={p.min}..{p.max}")
         if bits:
-            return "  " + ", ".join(bits)
-    return ""
+            return "  " + ", ".join(bits) + text_flag
+    return text_flag

@@ -44,6 +44,16 @@ _TEMPORAL_HINTS = ("date", "timestamp", "time")
 # The percentiles captured for numeric columns.
 _QUANTILES = (0.25, 0.50, 0.75, 0.95)
 
+# Numbers-stored-as-text detection (finding B12): probe this many non-null values of a
+# text-typed column; flag it if at least this fraction parse as numbers, and take the numeric
+# min/max off the same sample so annotate sees the *magnitude* (a district with values up to
+# ~1.2M is population, not area in km²) — the flag alone doesn't disambiguate. Bounded so it
+# stays a cheap $0 add on top of the stats query; the min/max are sample-based (approximate),
+# consistent with the profiler's other sampled stats.
+_NUMERIC_TEXT_PROBE = 1000
+_NUMERIC_TEXT_MIN_SAMPLE = 10
+_NUMERIC_TEXT_FRACTION = 0.98
+
 
 @dataclass(frozen=True)
 class ProfileConfig:
@@ -250,16 +260,33 @@ def _profile_column(
     else:
         pctl = {q: _as_float(row.get(f"p{int(q * 100)}")) for q in _QUANTILES}
 
+    # A text-declared column whose values are all numeric (B12): flag it so annotate can
+    # surface it and the agent can CAST — and take min/max off the numeric sample so the
+    # *magnitude* (the disambiguating signal) reaches the annotator, since text columns get
+    # no SQL min/max above.
+    numtext = _numeric_text_probe(db, source, col) if kind == "text" else _NumericText(False)
+    mn = (
+        _normalize(row.get("mn"))
+        if kind in ("numeric", "temporal")
+        else _normalize(numtext.minimum)
+    )
+    mx = (
+        _normalize(row.get("mx"))
+        if kind in ("numeric", "temporal")
+        else _normalize(numtext.maximum)
+    )
+
     profile = Profile(
         nulls=round((n - _as_int(row["non_null"] or 0)) / n, 6),
         distinct=_as_int(row["n_distinct"] or 0),
-        min=_normalize(row.get("mn")),
-        max=_normalize(row.get("mx")),
+        min=mn,
+        max=mx,
         p25=pctl[0.25],
         p50=pctl[0.50],
         p75=pctl[0.75],
         p95=pctl[0.95],
         sampled=sampled,
+        numeric_text=numtext.is_numeric_text,
     )
 
     sample_values: list[ScalarBound] | None = None
@@ -271,6 +298,37 @@ def _profile_column(
         sample_values = _top_k(db, source, col, cfg.top_k)
 
     return column.model_copy(update={"profile": profile, "sample_values": sample_values})
+
+
+@dataclass(frozen=True)
+class _NumericText:
+    """Result of the numbers-stored-as-text probe: the flag plus the sample's numeric range."""
+
+    is_numeric_text: bool
+    minimum: float | None = None
+    maximum: float | None = None
+
+
+def _numeric_text_probe(db: Database, source: str, col: str) -> _NumericText:
+    """Whether a text-typed column actually holds numbers, and its numeric min/max (finding B12).
+
+    Probes a bounded sample of non-null values: flags the column when nearly all parse as
+    numbers (the numbers-stored-as-text pattern common in dumped/dynamically-typed schemas), and
+    returns the min/max of those numbers so annotate sees the magnitude — the flag alone doesn't
+    tell "area" from "population". Bounded and read-only, so it stays a cheap add on the stats
+    query; the range is sample-based (approximate)."""
+    rows = db.execute(
+        f"SELECT {col} AS v FROM {source} WHERE {col} IS NOT NULL LIMIT {_NUMERIC_TEXT_PROBE}"
+    ).rows
+    values = [r[0] for r in rows if r[0] is not None]
+    if len(values) < _NUMERIC_TEXT_MIN_SAMPLE:
+        return _NumericText(False)
+    # Only *strings* that parse as numbers count — a column already returning ints/floats is
+    # numeric by type, not numbers-stored-as-text.
+    nums = [f for v in values if isinstance(v, str) and (f := _as_float(v)) is not None]
+    if len(nums) / len(values) < _NUMERIC_TEXT_FRACTION:
+        return _NumericText(False)
+    return _NumericText(True, min(nums), max(nums))
 
 
 def _top_k(db: Database, source: str, col: str, k: int) -> list[ScalarBound]:
