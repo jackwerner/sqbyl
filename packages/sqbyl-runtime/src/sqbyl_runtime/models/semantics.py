@@ -37,6 +37,14 @@ class Profile(SqbylModel):
         default=False,
         description="True if computed over a sample (TABLESAMPLE/row cap), not a full scan.",
     )
+    numeric_text: bool = Field(
+        default=False,
+        description=(
+            "True if the column is declared as text but its values are (almost) all numeric — a "
+            "numbers-stored-as-text column (common in dumped/dynamically-typed schemas). Lets the "
+            "agent CAST before comparing/aggregating, and flags the type for human review."
+        ),
+    )
 
 
 class Column(SqbylModel):

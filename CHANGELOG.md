@@ -11,6 +11,43 @@ artifact's `schema_version`, which versions the on-disk release JSON interface.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-16
+
+Brings `annotate` up to the honesty bar the rest of sqbyl already holds: it reconciles every
+signal, never silently overwrites your truth, and routes what it can't ground to the human —
+"the LLM proposes, the human disposes," now applied to the build step (findings B11/B12).
+
+### Changed
+
+- **`annotate` never overwrites an authoritative description.** A description carried in from
+  the database catalog (a column/table `COMMENT`, which `introspect` already captures) or
+  hand-edited is treated as ground truth: the annotator is now *shown* it and told to reconcile
+  with it, and the merge is **fill-only** — a non-empty description is never replaced, only blank
+  slots are filled. Synonyms are unioned onto existing ones, not replaced. (Previously the draft
+  blindly overwrote both — the `district.A4` "labeled *area* when it's *population*, catalog
+  comment discarded" case.)
+- **`annotate` withholds what it can't ground, and routes it to review.** An un-described column
+  the annotator isn't confident about (below `defaults.auto_apply_threshold`) — **or one whose
+  type disagrees with its content** (a numbers-stored-as-text column, see below) — is no longer
+  written as a confident sentence. It's held back and surfaced as a pre-filled proposal in the
+  `sqbyl review` console's leverage-sorted queue, to accept/edit/reject. Only confident,
+  previously un-described, well-typed columns auto-fill. Withholds are proportional to columns
+  that genuinely can't be grounded (they don't flood a wide schema); `annotate` prints how many
+  were held for review; the parallel `init` wave follows the same rules. Contested synonyms (the
+  collision cap) now naturally route here too.
+
+### Added
+
+- **Numbers-stored-as-text detection (B12).** The profiler flags a text-declared column whose
+  values are (almost) all numeric — common in dumped/dynamically-typed schemas — as
+  `profile.numeric_text`, and captures the values' **numeric min/max** (text columns otherwise
+  get no range). The magnitude is what disambiguates the meaning — a `district` column ranging to
+  ~1.2M is *population*, not *area in km²* — so it's rendered into the annotator's prompt and the
+  review card, not just a bare "it's a number" flag. Because the declared type is actively
+  misleading here, such a column is always routed to review even when the model is confident (the
+  `district.A4` "confidently labeled *area*" case, which a confidence gate alone would miss).
+  (Additive optional field; the release schema is regenerated, backward-compatible.)
+
 ## [0.4.5] — 2026-07-09
 
 Closes the last of the Sonnet structured-output parse sites: the agent's answer path is now

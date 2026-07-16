@@ -20,6 +20,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from sqbyl.annotate import load_annotation_review
 from sqbyl.attention import (
     decisions_from_coach_report,
     decisions_from_review_pile,
@@ -185,6 +186,9 @@ def _queue_payload(project: Project, paths: SqbylPaths) -> dict[str, object]:
         decisions += decisions_from_coach_report(pending, total=total)
     if run is not None:
         decisions += decisions_from_review_pile(run)
+    # Un-described columns the annotator wasn't confident about (finding B11) — proposals a
+    # human accepts/edits, routed through the same leverage-sorted queue as everything else.
+    decisions += load_annotation_review(paths.annotate_review)
 
     defaults = project.manifest.defaults
     q = route(

@@ -132,16 +132,25 @@ def _profile_dict(profile: Profile) -> dict[str, Any]:
 
 
 def merge_annotation(raw: dict[str, Any], annotation: TableAnnotation) -> dict[str, Any]:
-    """Overlay drafted descriptions/synonyms onto the raw YAML dict.
+    """Overlay drafted descriptions/synonyms onto the raw YAML dict — **fill-only**.
 
     Like ``merge_profiles``, this writes into the raw mapping so profile blocks,
-    ``profile: false`` markers, and key order survive — only ``description`` and
-    ``synonyms`` are added/refreshed.
+    ``profile: false`` markers, and key order survive. Two honesty rules (finding B11):
+
+    * A **non-empty existing description is never overwritten** — it's authoritative (a DB
+      catalog comment carried through by ``introspect``, or a human edit). The draft only
+      fills a blank slot; a contested/uncertain draft is withheld upstream (see
+      ``reconcile_annotation``) so it arrives here already blanked.
+    * **Synonyms are additive** — the draft's are unioned onto any existing ones, never
+      replacing them.
     """
     out = dict(raw)
-    out["description"] = annotation.description
-    if annotation.synonyms:
-        out["synonyms"] = list(annotation.synonyms)
+    filled = _fill_description(out.get("description"), annotation.description)
+    if filled is not None:
+        out["description"] = filled
+    merged_syn = _union_synonyms(out.get("synonyms"), annotation.synonyms)
+    if merged_syn:
+        out["synonyms"] = merged_syn
     by_name = {c.name: c for c in annotation.columns}
     columns = []
     for col in out.get("columns", []):
@@ -149,9 +158,33 @@ def merge_annotation(raw: dict[str, Any], annotation: TableAnnotation) -> dict[s
         name = col.get("name")
         drafted = by_name.get(name) if isinstance(name, str) else None
         if drafted is not None:
-            col["description"] = drafted.description
-            if drafted.synonyms:
-                col["synonyms"] = list(drafted.synonyms)
+            filled = _fill_description(col.get("description"), drafted.description)
+            if filled is not None:
+                col["description"] = filled
+            merged = _union_synonyms(col.get("synonyms"), drafted.synonyms)
+            if merged:
+                col["synonyms"] = merged
         columns.append(col)
     out["columns"] = columns
+    return out
+
+
+def _fill_description(existing: object, draft: str) -> str | None:
+    """Keep a non-empty existing description; only a blank slot is filled with the draft.
+    Returns ``None`` when there's nothing to write (so the key is left untouched)."""
+    if isinstance(existing, str) and existing.strip():
+        return None  # authoritative — never overwrite
+    return draft.strip() or None
+
+
+def _union_synonyms(existing: object, drafted: list[str]) -> list[str]:
+    """Additive union preserving order (existing first), de-duplicated case-insensitively."""
+    out: list[str] = []
+    seen: set[str] = set()
+    source = (list(existing) if isinstance(existing, list) else []) + list(drafted)
+    for s in source:
+        key = s.lower() if isinstance(s, str) else str(s)
+        if key not in seen:
+            seen.add(key)
+            out.append(s)
     return out

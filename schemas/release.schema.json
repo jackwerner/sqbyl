@@ -350,6 +350,12 @@
           "description": "Null fraction (0\u20131).",
           "title": "Nulls"
         },
+        "numeric_text": {
+          "default": false,
+          "description": "True if the column is declared as text but its values are (almost) all numeric \u2014 a numbers-stored-as-text column (common in dumped/dynamically-typed schemas). Lets the agent CAST before comparing/aggregating, and flags the type for human review.",
+          "title": "Numeric Text",
+          "type": "boolean"
+        },
         "p25": {
           "anyOf": [
             {

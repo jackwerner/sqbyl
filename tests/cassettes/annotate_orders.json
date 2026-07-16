@@ -1,6 +1,6 @@
 {
   "entries": {
-    "00c9f55aefb308cda821e813ba1e912833a5a5d48a2bfb8cdcf37e7af6f68145": {
+    "f613172cf6a1427969b0fbdff369c14bd30a18b4938ea522b6c3a173e7995e8e": {
       "request": {
         "cache_system": true,
         "max_tokens": 4096,
@@ -83,7 +83,7 @@
           "title": "TableAnnotation",
           "type": "object"
         },
-        "system": "You are a data analyst documenting a SQL table for a text-to-SQL agent. Write concise, factual descriptions grounded in the COLUMN PROFILE STATISTICS provided (ranges, distinct counts, sample values) \u2014 infer units and meaning from the data, never invent facts you can't support. Add a few natural-language synonyms a user might say. Give each description a confidence in [0,1]: high when the data makes the meaning obvious, low when the column is cryptic.",
+        "system": "You are a data analyst documenting a SQL table for a text-to-SQL agent. Write concise, factual descriptions grounded in the COLUMN PROFILE STATISTICS provided (ranges, distinct counts, sample values) \u2014 infer units and meaning from the data, never invent facts you can't support. When a column already has an EXISTING NOTE (from the database catalog or a human), treat it as authoritative: reconcile your description with it rather than contradicting it, and if the data genuinely conflicts with the note, say so plainly and lower your confidence instead of silently overriding it. Add a few natural-language synonyms a user might say. Give each description a confidence in [0,1]: high when the data (and any note) make the meaning obvious, low when the column is cryptic, coded, or you are guessing \u2014 a low confidence routes it to a human for review.",
         "temperature": 0.0
       },
       "response": {
