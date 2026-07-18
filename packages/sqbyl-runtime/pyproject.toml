@@ -29,7 +29,7 @@ dependencies = [
 # Provider SDKs are optional so the runtime is provider-neutral: pick one and install its
 # extra, e.g. `pip install sqbyl-runtime[openai]`. A bare install talks to no provider until
 # you choose. The client for each raises a matching install hint if its SDK is missing.
-anthropic = ["anthropic>=0.116.0"]
+anthropic = ["anthropic>=0.117.0"]
 openai = ["openai>=1.40"]
 # Dialect drivers are optional too, so the minimal runtime stays light. DuckDB is the default
 # (a hard dep above); SQLite needs no driver (Python stdlib). Install the extra for the

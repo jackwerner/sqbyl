@@ -11,11 +11,11 @@ dev = [
     "sqbyl-runtime",
     # Both provider SDKs are optional extras of the runtime, but the dev/test env needs both
     # installed: the real-client unit tests build each SDK client via `_ensure_client()`.
-    "anthropic>=0.116.0",
-    "openai>=1.40",
-    "ruff>=0.6",
+    "anthropic>=0.117.0",
+    "openai>=2.46.0",
+    "ruff>=0.15.22",
     "pytest>=8",
-    "mypy>=1.11",
+    "mypy>=2.3.0",
     "import-linter>=2.13",
     "pyyaml>=6",
     "types-pyyaml>=6",
@@ -25,7 +25,7 @@ dev = [
 # Docs-site toolchain, isolated from the default dev env so `uv sync` stays lean.
 # Build/preview with `uv run --group docs mkdocs serve` (or `mkdocs build`).
 docs = [
-    "mkdocs-material>=9.5",
+    "mkdocs-material>=9.7.7",
 ]
 
 [tool.uv.sources]
