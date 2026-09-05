@@ -21,7 +21,7 @@ dependencies = [
     # Lockstep: the toolkit and runtime are cut together, so pin the exact runtime
     # this toolkit was built and tested against.
     "sqbyl-runtime==0.5.0",
-    "pydantic>=2.7,<3",
+    "pydantic>=2.13.5,<3",
     "pyyaml>=6",
     # The review console (spec §6.5) is a local FastAPI app with a bundled UI. It lives
     # in the dev toolkit only — the shipped `sqbyl-runtime` never carries a web stack.
